@@ -1,7 +1,7 @@
 """Comando graph — Analizar el grafo de wikilinks del vault OKF.
 
 Subcomandos:
-    stats, orphans, hubs, backlinks, deps, tags, bridges, cluster, path, dump
+    stats, orphans, hubs, backlinks, deps, tags, bridges, cluster, path, dump, dirs, types
 """
 
 import sys
@@ -268,6 +268,101 @@ def _cmd_bridges(graph, tag_index):
     return "Tags puente entre clusters de wikilinks:\n" + "\n".join(lines)
 
 
+def _cmd_dirs(vault):
+    """Árbol de directorios con conteo de archivos de concepto.
+
+    Agrupa por filesystem — útil para detectar sobrecarga de carpetas,
+    a diferencia de cluster que agrupa por conectividad de wikilinks.
+    """
+    from collections import defaultdict
+
+    all_files = find_md_files(vault)
+    # Agrupar por directorio: {rel_dir: count}
+    dir_counts: dict[str, int] = defaultdict(int)
+    for f in all_files:
+        rel = f.relative_to(vault)
+        parent = str(rel.parent) if str(rel.parent) != "." else "(raíz)"
+        dir_counts[parent] += 1
+
+    # Construir árbol de prefijos para renderizado jerárquico
+    prefix_tree: dict[str, dict] = {}
+    for d in sorted(dir_counts):
+        parts = d.split("/")
+        node = prefix_tree
+        for part in parts:
+            if part not in node:
+                node[part] = {}
+            node = node[part]
+
+    lines = [f"Directorios del vault ({len(dir_counts)} carpetas con conceptos):\n"]
+
+    def _render(node, path_parts=(), depth=0):
+        items = sorted(node.items())
+        for i, (name, children) in enumerate(items):
+            is_last = (i == len(items) - 1)
+            connector = "└── " if is_last else "├── "
+            full_path = "/".join(path_parts + (name,))
+
+            # Buscar count: match exacto del path completo
+            count = dir_counts.get(full_path, 0)
+            # También intentar con "(raíz)" si es el nivel 0
+            if count == 0 and depth == 0:
+                count = dir_counts.get(f"(raíz)", 0)
+
+            indent = "    " * depth
+            lines.append(f"{indent}{connector}{name}/ ({count})")
+            if children:
+                _render(children, path_parts + (name,), depth + 1)
+
+    _render(prefix_tree)
+    return "\n".join(lines)
+
+
+def _cmd_types(vault):
+    """Distribución de conceptos por type (frontmatter).
+
+    Responde: ¿cuántos Decision, Plan, Insight, etc. hay en el vault?
+    Detecta desbalances estructurales — ej: muchos Insights sin Decisiones.
+    """
+    from collections import Counter
+    from cli.frontmatter import parse_frontmatter
+
+    all_files = find_md_files(vault)
+    type_counts: Counter[str] = Counter()
+    missing: list[str] = []
+
+    for f in all_files:
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            missing.append(str(f.relative_to(vault)))
+            continue
+        fields, _ = parse_frontmatter(text)
+        if fields and fields.get("type"):
+            type_counts[str(fields["type"])] += 1
+        else:
+            missing.append(str(f.relative_to(vault)))
+
+    if not type_counts and not missing:
+        return "No se encontraron conceptos con frontmatter."
+
+    lines = [f"Distribución por type ({sum(type_counts.values())} conceptos con type, {len(missing)} sin type):\n"]
+
+    max_count = max(type_counts.values()) if type_counts else 1
+    for t, count in type_counts.most_common():
+        bar = "█" * max(1, int(20 * count / max_count))
+        lines.append(f"  {t:<20} {count:>4}  {bar}")
+
+    if missing:
+        lines.append(f"\nSin type ({len(missing)}):")
+        for m in missing[:15]:
+            lines.append(f"  - {m}")
+        if len(missing) > 15:
+            lines.append(f"  ... y {len(missing) - 15} más")
+
+    return "\n".join(lines)
+
+
 def _cmd_dump(graph):
     lines = []
     for node in sorted(graph.keys()):
@@ -322,12 +417,16 @@ def run(args, vault):
         print(_cmd_tags(graph, tag_index, sub_args[0] if sub_args else None))
     elif subcommand == "bridges":
         print(_cmd_bridges(graph, tag_index))
+    elif subcommand == "dirs":
+        print(_cmd_dirs(vault))
+    elif subcommand == "types":
+        print(_cmd_types(vault))
     elif subcommand == "dump":
         print(_cmd_dump(graph))
     else:
         print(f"Subcomando desconocido: {subcommand}", file=sys.stderr)
         print("Comandos: stats, orphans, hubs, backlinks, deps, tags, bridges, "
-              "cluster, path, dump", file=sys.stderr)
+              "dirs, types, cluster, path, dump", file=sys.stderr)
         return 1
 
     return 0

@@ -243,7 +243,7 @@ def run(args, vault):
 
         status_str = f" ({status})" if status else ""
 
-        print(f"{prefix} [{ctype}]{status_str} {title}")
+        print(f"{prefix} {node['path']} [{ctype}]{status_str} {title}")
         if desc_short:
             print(f"{indent}   {desc_short}")
         if tag_str:

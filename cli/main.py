@@ -91,7 +91,7 @@ def build_parser():
     # ── graph ──
     sp_graph = subparsers.add_parser("graph", help="Analizar el grafo de wikilinks")
     sp_graph.add_argument("subcommand", nargs="?", type=str,
-                          help="stats|orphans|hubs|backlinks|deps|tags|bridges|cluster|path|dump")
+                          help="stats|orphans|hubs|backlinks|deps|tags|bridges|cluster|path|dump|dirs|types")
     sp_graph.add_argument("args", nargs="*", type=str,
                           help="Argumentos adicionales para el subcomando")
 

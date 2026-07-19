@@ -220,7 +220,7 @@ def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
     """
     cmd = args[1] if len(args) > 1 else (args[0] if args else "")
     # Comandos que no devuelven archivos individuales
-    if cmd in ("stats", "tags", "bridges"):
+    if cmd in ("stats", "tags", "bridges", "dirs", "types"):
         return []
     paths: list[str] = []
     for line in stdout.splitlines():
@@ -406,6 +406,8 @@ def okf_graph(command: str, arg: str = "") -> str:
             - 'bridges': tags que conectan clusters de wikilinks
             - 'cluster': agrupación del vault
             - 'dump': volcado completo del grafo
+            - 'dirs': árbol de directorios con conteo de conceptos
+            - 'types': distribución de conceptos por type (frontmatter)
         arg: Argumento adicional (slug de concepto para backlinks/deps, nombre de tag para tags)
     """
     args = ["graph", command]
