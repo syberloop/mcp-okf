@@ -140,6 +140,22 @@ def _append_jsonl(event: dict) -> None:
         pass
 
 
+def _extract_created_path(result: "subprocess.CompletedProcess") -> str | None:
+    """Extrae el path relativo del archivo creado por okf_new."""
+    if result.returncode != 0:
+        return None
+    for line in (result.stdout or "").splitlines():
+        if "Creado:" not in line:
+            continue
+        raw_path = line.split("Creado:", 1)[1].strip()
+        try:
+            relative = Path(raw_path).resolve().relative_to(VAULT.resolve())
+            return str(relative)
+        except ValueError:
+            return None
+    return None
+
+
 def _extract_result_nodes(tool_name: str, args: list[str],
                           result: "subprocess.CompletedProcess") -> list[str] | None:
     """Extrae los paths de nodos del resultado (traverse/search) para el trace visual.
@@ -215,6 +231,10 @@ def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
 def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedProcess",
                   duration_ms: int, args: list[str]) -> None:
     """Extrae result_nodes y persiste el evento a SQLite + JSONL."""
+    if tool_name == "okf_new":
+        created_path = _extract_created_path(result)
+        if created_path:
+            params = {**params, "created_path": created_path}
     nodes = _extract_result_nodes(tool_name, args, result)
     _persist_event(tool_name, params, result, duration_ms,
                    nodes_count=len(nodes) if nodes else None)
