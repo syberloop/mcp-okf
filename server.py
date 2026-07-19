@@ -32,6 +32,7 @@ HERMES_DIR = Path.home() / ".hermes"
 DB_PATH = HERMES_DIR / "cognitive-trace.db"
 JSONL_DIR = VAULT / ".obsidian" / "plugins" / "cognitive-trace"
 JSONL_PATH = JSONL_DIR / "event_log.jsonl"
+JSONL_LOCK = threading.Lock()
 
 # Máximo de result_nodes por evento (bound del tamaño de línea JSONL)
 RESULT_NODES_CAP = 150
@@ -134,8 +135,10 @@ def _append_jsonl(event: dict) -> None:
     """Escribe una línea JSON al event_log.jsonl."""
     try:
         JSONL_DIR.mkdir(parents=True, exist_ok=True)
-        with open(JSONL_PATH, "a") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        line = json.dumps(event, ensure_ascii=False) + "\n"
+        with JSONL_LOCK:
+            with open(JSONL_PATH, "a", encoding="utf-8") as f:
+                f.write(line)
     except Exception:
         pass
 
@@ -275,21 +278,30 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             output += "\n[stderr]\n" + result.stderr
         if result.returncode != 0:
             output += f"\n[exit_code: {result.returncode}]"
-        # Persistir evento. Si la extracción de result_nodes requiere re-run --json
-        # (traverse en modo texto), va a un thread daemon para no sumar ~500ms de
-        # latencia al tool call; el evento aterriza en el JSONL apenas termina.
-        if tool_name == "okf_traverse" and result.returncode == 0 and "--json" not in args:
-            threading.Thread(
-                target=_finish_event,
-                args=(tool_name, params or {}, result, duration_ms, list(args)),
-                daemon=True,
-            ).start()
-        else:
-            _finish_event(tool_name, params or {}, result, duration_ms, list(args))
+        # Persistir de forma síncrona para conservar el orden de llegada en
+        # SQLite/JSONL. La extracción secundaria de traverse no debe reordenar
+        # eventos posteriores ni perderse al cerrar el proceso.
+        _finish_event(tool_name, params or {}, result, duration_ms, list(args))
         return output.strip() or "(sin salida)"
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        duration_ms = int((time.monotonic() - start) * 1000) if "start" in locals() else timeout * 1000
+        result = subprocess.CompletedProcess(
+            args=CLI + args,
+            returncode=124,
+            stdout=e.stdout or "",
+            stderr=f"Timeout después de {timeout}s",
+        )
+        _finish_event(tool_name, params or {}, result, duration_ms, list(args))
         return "[timeout] El comando excedió el tiempo límite."
     except Exception as e:
+        duration_ms = int((time.monotonic() - start) * 1000) if "start" in locals() else 0
+        result = subprocess.CompletedProcess(
+            args=CLI + args,
+            returncode=1,
+            stdout="",
+            stderr=str(e),
+        )
+        _finish_event(tool_name, params or {}, result, duration_ms, list(args))
         return f"[error] {e}"
 
 
@@ -349,7 +361,11 @@ def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: s
         args.append("--todos")
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_search", params={"query": query, "type": type, "status": status, "todos": todos})
+    return _run(args, tool_name="okf_search", params={
+        "query": query, "type": type, "status": status,
+        "cyber_field": cyber_field, "cyber_value": cyber_value,
+        "todos": todos, "json_output": json_output,
+    })
 
 
 @mcp.tool()
@@ -368,7 +384,9 @@ def okf_read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = Fals
     args = ["read", slug, "--offset", str(offset), "--limit", str(limit)]
     if no_touch:
         args.append("--no-touch")
-    return _run(args, tool_name="okf_read", params={"slug": slug, "no_touch": no_touch})
+    return _run(args, tool_name="okf_read", params={
+        "slug": slug, "offset": offset, "limit": limit, "no_touch": no_touch,
+    })
 
 
 @mcp.tool()
@@ -412,7 +430,7 @@ def okf_health(strict: bool = False, json_output: bool = False) -> str:
         args.append("--strict")
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_health", params={"strict": strict})
+    return _run(args, tool_name="okf_health", params={"strict": strict, "json_output": json_output})
 
 
 @mcp.tool()
@@ -462,7 +480,10 @@ def okf_new(type: str, title: str, description: str, tags: str = "", status: str
         args.append("--cyber")
     if dry_run:
         args.append("--dry-run")
-    return _run(args, tool_name="okf_new", params={"type": type, "title": title})
+    return _run(args, tool_name="okf_new", params={
+        "type": type, "title": title, "description": description,
+        "tags": tags, "status": status, "cyber": cyber, "dry_run": dry_run,
+    })
 
 
 # ── Cognitive Trace: Analítica + Comandos ──────────────────────────────────
@@ -566,7 +587,9 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                 lines = ["Distribución de tools:"]
                 for r in rows:
                     lines.append(f"  {r['tool']}: {r['cnt']} llamadas (promedio {r['avg_ms']:.0f}ms)")
-                return "\n".join(lines)
+                result = "\n".join(lines)
+                _persist_analytics(query, result)
+                return result
 
             elif query == "daily_activity":
                 rows = conn.execute(
@@ -580,7 +603,9 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                 lines = ["Actividad por día:"]
                 for r in rows:
                     lines.append(f"  {r['day']}: {r['events']} eventos, {r['sessions']} sesiones")
-                return "\n".join(lines)
+                result = "\n".join(lines)
+                _persist_analytics(query, result)
+                return result
 
             elif query == "node_timeline":
                 if not arg:
@@ -596,7 +621,9 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                 lines = [f"Historial de '{arg}':"]
                 for r in rows:
                     lines.append(f"  {r['ts'][:19]} — {r['tool']}")
-                return "\n".join(lines)
+                result = "\n".join(lines)
+                _persist_analytics(query, result)
+                return result
 
             elif query == "error_summary":
                 rows = conn.execute(
@@ -609,13 +636,15 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                     for r in rows:
                         lines.append(f"  {r['tool']}: {r['cnt']} errores")
                     result = "\n".join(lines)
+                _persist_analytics(query, result)
 
             elif query == "co_visited":
                 if not arg:
                     result = "[error] Requiere arg=<slug> para co_visited"
                 else:
                     rows = conn.execute(
-                        """SELECT json_extract(e2.params, '$.slug') as co_node, COUNT(*) as cnt
+                        """SELECT json_extract(e2.params, '$.slug') as co_node,
+                                  COUNT(DISTINCT e2.session_id) as cnt
                            FROM events e1 JOIN events e2 ON e1.session_id = e2.session_id
                            WHERE json_extract(e1.params, '$.slug') = ?
                              AND e2.tool = 'okf_traverse'
@@ -700,6 +729,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                     if avg_row and avg_row['avg_depth']:
                         lines.append(f"  Profundidad promedio: {avg_row['avg_depth']:.1f}")
                     result = "\n".join(lines)
+                    _persist_analytics(query, result)
 
             elif query == "prompts":
                 threshold = int(arg) if arg and arg.isdigit() else 60
@@ -743,6 +773,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                         lines.append(f"  prompt #{r['prompt_id']}: {start} — {r['events']} eventos ({tools})")
                     lines.append(f"Usá arg=N para cambiar el umbral (default {threshold}s).")
                     result = "\n".join(lines)
+                    _persist_analytics(query, result)
 
             elif query == "entry_points":
                 rows = conn.execute(
