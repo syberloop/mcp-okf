@@ -120,6 +120,10 @@ def build_parser():
                         help="Agregar bloque cyber:")
     sp_new.add_argument("--dry-run", action="store_true", default=False,
                         help="Mostrar sin escribir")
+    sp_new.add_argument("--body", default=None,
+                        help="Contenido del body (reemplaza el template por defecto)")
+    sp_new.add_argument("--body-file", default=None,
+                        help="Archivo con el contenido del body")
 
     # ── touch ──
     sp_touch = subparsers.add_parser("touch", help="Estadísticas de lecturas")

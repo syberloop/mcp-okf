@@ -491,7 +491,7 @@ def okf_stale(json_output: bool = False) -> str:
 
 
 @mcp.tool()
-def okf_new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False) -> str:
+def okf_new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "") -> str:
     """Crea un concepto nuevo en el vault OKF con frontmatter consistente.
 
     Usar SIEMPRE en vez de write_file para crear conceptos.
@@ -504,6 +504,7 @@ def okf_new(type: str, title: str, description: str, tags: str = "", status: str
         status: Estado inicial (propuesta, aplicada, etc.)
         cyber: Si True y el type califica, agrega bloque cyber con placeholders
         dry_run: Si True, previsualiza sin escribir
+        body: Contenido completo del body (opcional — si se omite, usa template por defecto)
     """
     args = ["new", "--type", type, "--title", title, "--description", description]
     if tags:
@@ -514,9 +515,12 @@ def okf_new(type: str, title: str, description: str, tags: str = "", status: str
         args.append("--cyber")
     if dry_run:
         args.append("--dry-run")
+    if body:
+        args += ["--body", body]
     return _run(args, tool_name="okf_new", params={
         "type": type, "title": title, "description": description,
         "tags": tags, "status": status, "cyber": cyber, "dry_run": dry_run,
+        "body": body[:100] + "..." if len(body) > 100 else body,
     })
 
 

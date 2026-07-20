@@ -220,6 +220,8 @@ def run(args, vault):
     resource = getattr(args, "resource", None)
     cyber = getattr(args, "cyber", False)
     dry_run = getattr(args, "dry_run", False)
+    body_text = getattr(args, "body", None)
+    body_file = getattr(args, "body_file", None)
 
     if concept_type not in VALID_TYPES:
         print(f"❌ Type inválido: '{concept_type}'", file=sys.stderr)
@@ -238,8 +240,17 @@ def run(args, vault):
 
     frontmatter = _build_frontmatter(concept_type, title, description,
                                      status, resource, tags, cyber)
-    template = BODY_TEMPLATES.get(concept_type, "## Contexto\n\n(Contenido)\n")
-    body = f"\n# {title.strip()}\n\n{template}"
+    if body_file:
+        try:
+            body_text = Path(body_file).read_text(encoding="utf-8")
+        except Exception as e:
+            print(f"❌ Error leyendo body-file: {e}", file=sys.stderr)
+            return 1
+    if body_text:
+        body = f"\n# {title.strip()}\n\n{body_text.strip()}\n"
+    else:
+        template = BODY_TEMPLATES.get(concept_type, "## Contexto\n\n(Contenido)\n")
+        body = f"\n# {title.strip()}\n\n{template}"
     content = frontmatter + body
 
     if dry_run:
