@@ -9,7 +9,7 @@ from pathlib import Path
 # Types MECE permitidos
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
-    "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill",
+    "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow",
 }
 
 # Types que califican para bloque cyber:
@@ -28,6 +28,7 @@ TYPE_DIR = {
     "Tool": "specs",
     "Spec": "specs",
     "Skill": "sistema/skills",
+    "Workflow": "workflows",
 }
 
 BODY_TEMPLATES = {
@@ -135,6 +136,28 @@ BODY_TEMPLATES = {
 ## Archivos
 
 (¿SKILL.md, references/, scripts/?)
+""",
+    "Workflow": """## Qué problema resuelve
+
+(¿Qué problema resuelve este workflow? ¿Cuándo debería un agente sugerirlo?)
+
+## Arquitectura
+
+(Componentes abstractos: sensor → criterio → clasificación → acción)
+
+## Procedimiento
+
+1. 
+2. 
+3. 
+
+## Criterios de calidad
+
+(¿Cómo saber si el workflow está funcionando?)
+
+## Instanciación en OKF
+
+(Referencia a la instancia concreta en nuestro ecosistema)
 """,
 }
 
