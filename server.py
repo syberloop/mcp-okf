@@ -471,6 +471,23 @@ def okf_touch(all: bool = True) -> str:
 
 
 @mcp.tool()
+def okf_session_metrics(json_output: bool = False) -> str:
+    """Métricas agregadas de todas las sesiones del vault.
+
+    Extrae métricas de la sección ## Métricas de cada resumen de sesión:
+    tools usadas, conceptos creados, commits, infracciones MCP.
+    Agrega totales y tendencias.
+
+    Args:
+        json_output: Si True, salida JSON para consumo programático
+    """
+    args = ["session-metrics"]
+    if json_output:
+        args.append("--json")
+    return _run(args, tool_name="okf_session_metrics", params={"json_output": json_output})
+
+
+@mcp.tool()
 def okf_stale(json_output: bool = False) -> str:
     """Detector de obsolescencia semántica del vault OKF.
 

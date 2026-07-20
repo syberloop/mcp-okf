@@ -139,6 +139,11 @@ def build_parser():
     sp_stale.add_argument("--json", action="store_true", default=False,
                           help="Salida JSON")
 
+    # ── session-metrics ──
+    sp_sm = subparsers.add_parser("session-metrics", help="Métricas agregadas de sesiones")
+    sp_sm.add_argument("--json", action="store_true", default=False,
+                       help="Salida JSON")
+
     # ── review ──
     sp_review = subparsers.add_parser("review", help="Revisión cibernética")
     sp_review.add_argument("--json", action="store_true", default=False,
@@ -229,6 +234,10 @@ def main(argv=None):
 
     elif command == "stale":
         from cli.commands.stale import run
+        sys.exit(run(args, vault))
+
+    elif command == "session-metrics":
+        from cli.commands.session_metrics import run
         sys.exit(run(args, vault))
 
     elif command == "review":
