@@ -227,7 +227,7 @@ def _generate_root_index(vault):
             lines.append(f"* [{dname}/]({dname}/index.md)")
             index_path = vault / dname / "index.md"
             if index_path.exists():
-                print(f"  ⚠️  {dname}/ — sin descripción en index.md", file=sys.stderr)
+                print(f"  🚨 SIN DESCRIPCIÓN: {dname}/ — AGREGAR description EN index.md", file=sys.stderr)
 
     content = "\n".join(lines) + "\n"
 
@@ -300,7 +300,7 @@ def _generate_index(dir_path, vault):
                 # Check if description exists but was too long (silently dropped by cap)
                 raw = _extract_frontmatter_field_no_cap(f, "description")
                 if raw and len(raw) > _MAX_FIELD_LENGTH:
-                    print(f"  ⚠️  {f.relative_to(vault)} — description {len(raw)} chars (max {_MAX_FIELD_LENGTH})", file=sys.stderr)
+                    print(f"  🚨 DESCRIPTION LARGA: {f.relative_to(vault)} — {len(raw)} chars (máx {_MAX_FIELD_LENGTH}). ¡TRUNCAR!", file=sys.stderr)
             concepts.append((f.name, desc, status))
 
     if concepts:
