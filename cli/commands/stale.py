@@ -80,30 +80,33 @@ def count_checkboxes(text):
     return completed, pending, total
 
 
-def has_problem_language(description):
-    """Detecta si la description habla de problemas en tiempo presente."""
-    problem_patterns = [
-        r'\bno\s+(existe|funciona|hay|tiene|está)\b',
-        r'\broto[s]?\b',
-        r'\bfalso[s]?\b',
-        r'\bfalta[n]?\b',
-        r'\bsin\s+(implementar|resolver|definir|conectar|backend)\b',
-        r'\bpendiente[s]?\b',
-        r'\bincompleto\b',
-        r'\bplaceholder\b',
-        r'\bno\s+implementado\b',
-        r'\bno\s+conectado\b',
-        r'\bclaims?\s+fals[oa]s?\b',
-        r'\b404\b',
-        r'\bCTAs?\s+rot[oa]s?\b',
-        r'\bcero\s+métricas\b',
-        r'\bno\s+almacena\b',
-        r'\bno\s+notifica\b',
-        r'\bse\s+pierden\b',
-        r'\bno\s+está\b',
-    ]
+def has_problem_language(description, patterns=None):
+    """Detecta si la description habla de problemas en tiempo presente.
+
+    Args:
+        description: texto de la description.
+        patterns: lista de regex patterns (case-insensitive). Si es None,
+                  usa los defaults embebidos (español).
+    """
+    if patterns is None:
+        patterns = [
+            r'\bno\s+(existe|funciona|hay|tiene|está|implementado|conectado|almacena|notifica)\b',
+            r'\broto[s]?\b',
+            r'\bfalso[s]?\b',
+            r'\bfalta[n]?\b',
+            r'\bsin\s+(implementar|resolver|definir|conectar|backend)\b',
+            r'\bpendiente[s]?\b',
+            r'\bincompleto\b',
+            r'\bplaceholder\b',
+            r'\bclaims?\s+fals[oa]s?\b',
+            r'\b404\b',
+            r'\bCTAs?\s+rot[oa]s?\b',
+            r'\bcero\s+métricas\b',
+            r'\bno\s+está\b',
+            r'\bse\s+pierden\b',
+        ]
     desc_lower = description.lower()
-    for pat in problem_patterns:
+    for pat in patterns:
         if re.search(pat, desc_lower):
             return True
     return False
@@ -151,7 +154,8 @@ def build_backlinks_index(vault):
 
 
 def collect_stale(vault, timestamp_days=90, propuesta_days=30,
-                  no_commits_days=180, checkbox_ratio=0.7):
+                  no_commits_days=180, checkbox_ratio=0.7,
+                  problem_patterns=None):
     """Escanea todos los conceptos y evalúa señales de obsolescencia."""
     today = get_today()
     backlinks = build_backlinks_index(vault)
@@ -217,7 +221,7 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
 
         # ── Señal 7: description vs body inconsistency ──
         description = str(fm.get("description", ""))
-        if has_problem_language(description):
+        if has_problem_language(description, patterns=problem_patterns):
             completed, pending, total = count_checkboxes(text)
             if total >= 3 and completed / total >= checkbox_ratio:
                 signals.append(f"desc desactualizada ({completed}/{total} tasks ✓)")
@@ -262,9 +266,10 @@ def run(args, vault, config=None):
     propuesta_days = config.stale_propuesta_days if config else 30
     no_commits_days = config.stale_no_commits_days if config else 180
     checkbox_ratio = config.stale_checkbox_ratio if config else 0.7
+    problem_patterns = config.stale_problem_patterns if config else None
 
     results = collect_stale(vault, timestamp_days, propuesta_days,
-                            no_commits_days, checkbox_ratio)
+                            no_commits_days, checkbox_ratio, problem_patterns)
 
     if json_out:
         print(json.dumps(results, ensure_ascii=False, indent=2))

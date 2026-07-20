@@ -36,12 +36,21 @@ apply_config(_config)
 
 # Persistencia Cognitive Trace (feature flag)
 if _config.features_cognitive_trace:
-    HERMES_DIR = Path.home() / ".hermes"
-    DB_PATH = HERMES_DIR / "cognitive-trace.db"
-    JSONL_DIR = VAULT / ".obsidian" / "plugins" / "cognitive-trace"
-    JSONL_PATH = JSONL_DIR / "event_log.jsonl"
+    trace_db = _config._data["features"].get("trace_db_path")
+    trace_jsonl = _config._data["features"].get("trace_jsonl_path")
+
+    if trace_db:
+        DB_PATH = Path(trace_db).expanduser()
+    else:
+        DB_PATH = Path.home() / ".hermes" / "cognitive-trace.db"
+
+    if trace_jsonl:
+        JSONL_PATH = Path(trace_jsonl).expanduser()
+        JSONL_DIR = JSONL_PATH.parent
+    else:
+        JSONL_DIR = VAULT / ".obsidian" / "plugins" / "cognitive-trace"
+        JSONL_PATH = JSONL_DIR / "event_log.jsonl"
 else:
-    HERMES_DIR = None
     DB_PATH = None
     JSONL_DIR = None
     JSONL_PATH = None
@@ -61,7 +70,7 @@ def _get_session_id() -> str:
     if sid:
         return sid
     # Fallback: intentar leer del archivo de estado
-    state_file = HERMES_DIR / "session_state.json"
+    state_file = Path.home() / ".hermes" / "session_state.json"
     if state_file.exists():
         try:
             state = json.loads(state_file.read_text())

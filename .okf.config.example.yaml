@@ -65,6 +65,23 @@ stale:
   propuesta_days: 30      # días en status "propuesta" sin resolver
   no_commits_days: 180    # días sin commit → señal de abandono
   checkbox_ratio: 0.7     # % de checkboxes completados vs pendientes
+  # Patrones regex para detectar lenguaje de problema en description
+  # (señal 7 del detector de obsolescencia)
+  problem_patterns:
+    - "\bno\\s+(existe|funciona|hay|tiene|está|implementado|conectado|almacena|notifica)\b"
+    - "\broto[s]?\b"
+    - "\bfalso[s]?\b"
+    - "\bfalta[n]?\b"
+    - "\bsin\\s+(implementar|resolver|definir|conectar|backend)\b"
+    - "\bpendiente[s]?\b"
+    - "\bincompleto\b"
+    - "\bplaceholder\b"
+    - "\bclaims?\\s+fals[oa]s?\b"
+    - "\b404\b"
+    - "\bCTAs?\\s+rot[oa]s?\b"
+    - "\bcero\\s+métricas\b"
+    - "\bno\\s+está\b"
+    - "\bse\\s+pierden\b"
 
 # ── Ciclo cibernético ────────────────────────────────────────────────────────
 cyber:
@@ -99,6 +116,13 @@ features:
   # Check 8 del health: sincronización plugin↔spec (busca en ~/.hermes/plugins/)
   # Solo útil en el ecosistema Hermes. Desactivar para uso standalone.
   plugin_hash_sync: true
+
+  # Paths personalizados para Cognitive Trace (opcional)
+  # Si no se especifican, se usan defaults:
+  #   db_path: ~/.hermes/cognitive-trace.db
+  #   jsonl_path: <vault>/.obsidian/plugins/cognitive-trace/event_log.jsonl
+  # trace_db_path: ~/custom/trace.db
+  # trace_jsonl_path: ~/custom/events.jsonl
 
 # ── Templates de body ────────────────────────────────────────────────────────
 # Un template por type. Si no hay template para un type, se usa

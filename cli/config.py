@@ -49,6 +49,25 @@ DEFAULTS: dict[str, Any] = {
         "propuesta_days": 30,
         "no_commits_days": 180,
         "checkbox_ratio": 0.7,
+        # Patrones de lenguaje de problema en description (regex, case-insensitive)
+        # Señal 7 del detector: si la description habla de problemas y los
+        # checkboxes del body están ≥70% completos, la description está obsoleta.
+        "problem_patterns": [
+            r"\bno\s+(existe|funciona|hay|tiene|está|implementado|conectado|almacena|notifica)\b",
+            r"\broto[s]?\b",
+            r"\bfalso[s]?\b",
+            r"\bfalta[n]?\b",
+            r"\bsin\s+(implementar|resolver|definir|conectar|backend)\b",
+            r"\bpendiente[s]?\b",
+            r"\bincompleto\b",
+            r"\bplaceholder\b",
+            r"\bclaims?\s+fals[oa]s?\b",
+            r"\b404\b",
+            r"\bCTAs?\s+rot[oa]s?\b",
+            r"\bcero\s+métricas\b",
+            r"\bno\s+está\b",
+            r"\bse\s+pierden\b",
+        ],
     },
     "cyber": {
         "review_days": 14,
@@ -57,12 +76,19 @@ DEFAULTS: dict[str, Any] = {
         "smoke_entry_point": "tp3-cibernetico",
     },
     "exclude": {
-        "files": ["index.md", "log.md", "dashboard.md", "CLAUDE.md"],
+        "files": ["index.md", "log.md", "dashboard.md"],
         "dirs": [".git", ".obsidian", "Templates", "scripts", "references", "assets"],
     },
     "features": {
         "cognitive_trace": True,
         "plugin_hash_sync": True,
+        # Paths para Cognitive Trace (solo relevantes si cognitive_trace: true)
+        # - db_path: ruta al SQLite de eventos (default: ~/.hermes/cognitive-trace.db)
+        # - jsonl_path: ruta al JSONL para el plugin de Obsidian
+        #   (default: <vault>/.obsidian/plugins/cognitive-trace/event_log.jsonl)
+        # Usar null para aceptar el default.
+        "trace_db_path": None,
+        "trace_jsonl_path": None,
     },
     "templates": {
         "Decision": (
@@ -244,6 +270,10 @@ class Config:
     @property
     def stale_checkbox_ratio(self) -> float:
         return float(self._data["stale"]["checkbox_ratio"])
+
+    @property
+    def stale_problem_patterns(self) -> list[str]:
+        return list(self._data["stale"].get("problem_patterns", []))
 
     @property
     def cyber_review_days(self) -> int:
