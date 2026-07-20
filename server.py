@@ -194,6 +194,18 @@ def _extract_result_nodes(tool_name: str, args: list[str],
                             break
         elif tool_name == "okf_graph":
             nodes = _parse_graph_output(result.stdout, args)
+        elif tool_name == "okf_stale":
+            if result.returncode != 0:
+                return None
+            if "--json" in args:
+                data = json.loads(result.stdout)
+                nodes = [item.get("file", "") for item in data]
+            else:
+                nodes = []
+                for line in result.stdout.splitlines():
+                    m = re.match(r"\s+📄\s+\[(\w+)\]\s+(\S+)", line)
+                    if m:
+                        nodes.append(m.group(2))
         elif tool_name == "okf_analytics":
             # most_visited, least_visited, session_heatmap devuelven líneas
             # "  slug — N visitas (...)". Extraer slugs.
@@ -456,6 +468,26 @@ def okf_touch(all: bool = True) -> str:
     if all:
         args.append("--all")
     return _run(args, tool_name="okf_touch", params={})
+
+
+@mcp.tool()
+def okf_stale(json_output: bool = False) -> str:
+    """Detector de obsolescencia semántica del vault OKF.
+
+    Evalúa 7 señales (timestamp, reads, propuesta fantasma, huérfanos,
+    commits, decisión sin status, descripción vs body) y clasifica cada
+    concepto como STALE (3+ señales), ATENCIÓN (1-2) o FRESCO (0).
+
+    Solo-lectura. No modifica el vault. Usar para auditoría semanal
+    de conceptos que requieren atención humana.
+
+    Args:
+        json_output: Si True, salida JSON para consumo programático
+    """
+    args = ["stale"]
+    if json_output:
+        args.append("--json")
+    return _run(args, tool_name="okf_stale", params={"json_output": json_output})
 
 
 @mcp.tool()
