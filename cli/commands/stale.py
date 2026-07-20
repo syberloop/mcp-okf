@@ -150,7 +150,8 @@ def build_backlinks_index(vault):
     return index
 
 
-def collect_stale(vault):
+def collect_stale(vault, timestamp_days=90, propuesta_days=30,
+                  no_commits_days=180, checkbox_ratio=0.7):
     """Escanea todos los conceptos y evalúa señales de obsolescencia."""
     today = get_today()
     backlinks = build_backlinks_index(vault)
@@ -170,11 +171,11 @@ def collect_stale(vault):
         signals = []
         details = {}
 
-        # ── Señal 1: timestamp antiguo (> 90 días) ──
+        # ── Señal 1: timestamp antiguo ──
         ts = fm.get("timestamp")
         if ts:
             age = days_ago(str(ts), today)
-            if age is not None and age > 90:
+            if age is not None and age > timestamp_days:
                 signals.append(f"timestamp {age}d")
                 details["age_days"] = age
 
@@ -183,12 +184,12 @@ def collect_stale(vault):
         if reads is not None and int(reads) == 0:
             signals.append("reads=0")
 
-        # ── Señal 3: status: propuesta > 30 días ──
+        # ── Señal 3: status: propuesta sin resolver ──
         status = fm.get("status", "")
         if str(status).lower() == "propuesta":
             if ts:
                 age = days_ago(str(ts), today)
-                if age is not None and age > 30:
+                if age is not None and age > propuesta_days:
                     signals.append(f"propuesta sin resolver ({age}d)")
             else:
                 signals.append("propuesta sin timestamp")
@@ -200,11 +201,11 @@ def collect_stale(vault):
             if concept_type not in ("MarcoTeorico", "Spec", "Tool"):
                 signals.append("sin backlinks")
 
-        # ── Señal 5: sin commits > 6 meses ──
+        # ── Señal 5: sin commits ──
         last_commit = git_last_commit_date(f, vault)
         if last_commit:
             commit_age = days_ago(last_commit, today)
-            if commit_age is not None and commit_age > 180:
+            if commit_age is not None and commit_age > no_commits_days:
                 signals.append(f"sin commits ({commit_age}d)")
                 details["commit_age_days"] = commit_age
         else:
@@ -218,7 +219,7 @@ def collect_stale(vault):
         description = str(fm.get("description", ""))
         if has_problem_language(description):
             completed, pending, total = count_checkboxes(text)
-            if total >= 3 and completed / total >= 0.7:
+            if total >= 3 and completed / total >= checkbox_ratio:
                 signals.append(f"desc desactualizada ({completed}/{total} tasks ✓)")
                 details["tasks_completed"] = f"{completed}/{total}"
 
@@ -252,11 +253,18 @@ def collect_stale(vault):
     return results
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Ejecuta el detector de obsolescencia."""
     json_out = getattr(args, "json", False)
 
-    results = collect_stale(vault)
+    # Umbrales desde config o defaults
+    timestamp_days = config.stale_timestamp_days if config else 90
+    propuesta_days = config.stale_propuesta_days if config else 30
+    no_commits_days = config.stale_no_commits_days if config else 180
+    checkbox_ratio = config.stale_checkbox_ratio if config else 0.7
+
+    results = collect_stale(vault, timestamp_days, propuesta_days,
+                            no_commits_days, checkbox_ratio)
 
     if json_out:
         print(json.dumps(results, ensure_ascii=False, indent=2))

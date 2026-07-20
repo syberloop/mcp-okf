@@ -1,0 +1,137 @@
+# .okf.config.example.yaml
+# Copiar a <vault>/.okf.config.yaml y editar según la taxonomía de tu vault.
+#
+# Todas las secciones son opcionales. Si una clave no está presente,
+# se usa el default embebido (el de este archivo de ejemplo).
+#
+# Cadena de resolución:
+#   1. --config <path> en el CLI
+#   2. $OKF_CONFIG del entorno
+#   3. <vault>/.okf.config.yaml (95% de los casos)
+#   4. ~/.config/okf/config.yaml (global)
+#   5. Defaults embebidos (este archivo)
+
+# ── Taxonomía ────────────────────────────────────────────────────────────────
+types:
+  # Tipos válidos de conceptos en este vault
+  valid:
+    - Decision
+    - Plan
+    - Project
+    - Insight
+    - MarcoTeorico
+    - LeccionAprendida
+    - Tool
+    - Spec
+    - Sistema
+    - Agente
+    - Skill
+    - Workflow
+
+  # Tipos que califican para bloque cyber (review_on automático)
+  cyber:
+    - Sistema
+    - Agente
+    - Decision
+    - Plan
+    - Project
+    - Insight
+
+  # Tipos que NUNCA deben tener bloque cyber
+  excluded_cyber:
+    - MarcoTeorico
+    - LeccionAprendida
+    - Tool
+    - Spec
+
+  # Mapeo type → directorio donde se crea el archivo
+  directory:
+    Sistema: sistema
+    Agente: agentes
+    Decision: decisions
+    Plan: plans
+    Project: projects
+    Insight: insights
+    MarcoTeorico: frameworks
+    LeccionAprendida: historias
+    Tool: specs
+    Spec: specs
+    Skill: sistema/skills
+    Workflow: workflows
+
+# ── Umbrales de obsolescencia ────────────────────────────────────────────────
+stale:
+  timestamp_days: 90      # días sin modificar → señal de stale
+  propuesta_days: 30      # días en status "propuesta" sin resolver
+  no_commits_days: 180    # días sin commit → señal de abandono
+  checkbox_ratio: 0.7     # % de checkboxes completados vs pendientes
+
+# ── Ciclo cibernético ────────────────────────────────────────────────────────
+cyber:
+  review_days: 14         # días hasta review_on al crear con --cyber
+
+# ── Health check ─────────────────────────────────────────────────────────────
+health:
+  # Slug de un concepto que exista en este vault para el smoke test
+  smoke_entry_point: "tp3-cibernetico"
+
+# ── Exclusiones de archivos/directorios ──────────────────────────────────────
+exclude:
+  files:
+    - index.md
+    - log.md
+    - dashboard.md
+  dirs:
+    - .git
+    - .obsidian
+    - Templates
+    - scripts
+    - references
+    - assets
+
+# ── Feature flags ────────────────────────────────────────────────────────────
+features:
+  # Persistencia Cognitive Trace (SQLite + JSONL para Obsidian)
+  # Requiere Obsidian + plugin Cognitive Trace instalado.
+  # Desactivar si el MCP se usa standalone (sin Obsidian).
+  cognitive_trace: true
+
+  # Check 8 del health: sincronización plugin↔spec (busca en ~/.hermes/plugins/)
+  # Solo útil en el ecosistema Hermes. Desactivar para uso standalone.
+  plugin_hash_sync: true
+
+# ── Templates de body ────────────────────────────────────────────────────────
+# Un template por type. Si no hay template para un type, se usa
+# "## Contexto\n\n(Contenido)\n" como fallback genérico.
+templates:
+  Decision: |
+    ## Contexto
+    (¿Qué disparó esta decisión? ¿Qué problema resuelve?)
+    ## Decisión
+    (¿Qué se decidió? ¿Qué alternativas se descartaron?)
+    ## Impacto
+    (¿Qué cambia a partir de ahora?)
+  Insight: |
+    ## Observación
+    (¿Qué patrón o conexión se detectó?)
+    ## Implicación
+    (¿Qué significa esto? ¿Qué acción sugiere?)
+    ## Verificación
+    (¿Cómo se confirma o descarta este insight?)
+  Plan: |
+    ## Objetivo
+    (¿Qué se quiere lograr?)
+    ## Fases
+    1.
+    2.
+    3.
+    ## Métricas
+    (¿Cómo se mide el éxito?)
+  Project: |
+    ## Visión
+    (¿Qué es este proyecto? ¿Por qué existe?)
+    ## Estado
+    **Fase actual:** (planificación / desarrollo / producción / abandonado)
+    ## Componentes
+    -
+    -

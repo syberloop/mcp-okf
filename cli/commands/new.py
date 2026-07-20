@@ -6,16 +6,16 @@ import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-# Types MECE permitidos
+# Types MECE permitidos — defaults (pisan por Config si existe .okf.config.yaml)
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
     "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow",
 }
 
-# Types que califican para bloque cyber:
+# Types que califican para bloque cyber: — defaults
 CYBER_TYPES = {"Sistema", "Agente", "Decision", "Plan", "Project", "Insight"}
 
-# Mapeo type → directorio
+# Mapeo type → directorio — defaults
 TYPE_DIR = {
     "Sistema": "sistema",
     "Agente": "agentes",
@@ -172,7 +172,7 @@ def _slugify(text):
     return text
 
 
-def _build_frontmatter(concept_type, title, description, status, resource, tags, cyber):
+def _build_frontmatter(concept_type, title, description, status, resource, tags, cyber, config=None):
     """Genera el bloque YAML del frontmatter."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S-05:00")
 
@@ -192,8 +192,12 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
 
     lines.append(f"timestamp: {now}")
 
-    if cyber and concept_type in CYBER_TYPES:
-        review_date = (date.today() + timedelta(days=14)).isoformat()
+    # Resolver cyber_types desde config o fallback
+    cyber_types = set(config.types_cyber) if config else CYBER_TYPES
+
+    if cyber and concept_type in cyber_types:
+        review_days = config.cyber_review_days if config else 14
+        review_date = (date.today() + timedelta(days=review_days)).isoformat()
         lines.append("cyber:")
         lines.append("  sensor: (completar)")
         lines.append('  perception: ""')
@@ -204,13 +208,13 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
         lines.append(f"  review_on: {review_date}")
     elif cyber:
         print(f"⚠️  --cyber ignorado: type '{concept_type}' no califica "
-              f"(solo {', '.join(sorted(CYBER_TYPES))})", file=sys.stderr)
+              f"(solo {', '.join(sorted(cyber_types))})", file=sys.stderr)
 
     lines.append("---")
     return "\n".join(lines) + "\n"
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Crea un concepto nuevo en el vault."""
     concept_type = getattr(args, "concept_type", None)
     title = getattr(args, "title", None)
@@ -223,13 +227,17 @@ def run(args, vault):
     body_text = getattr(args, "body", None)
     body_file = getattr(args, "body_file", None)
 
-    if concept_type not in VALID_TYPES:
+    # Resolver desde config o fallback a defaults
+    valid_types = set(config.types_valid) if config else VALID_TYPES
+    type_dir = dict(config.types_directory) if config else TYPE_DIR
+
+    if concept_type not in valid_types:
         print(f"❌ Type inválido: '{concept_type}'", file=sys.stderr)
-        print(f"   Válidos: {', '.join(sorted(VALID_TYPES))}", file=sys.stderr)
+        print(f"   Válidos: {', '.join(sorted(valid_types))}", file=sys.stderr)
         return 1
 
     # Determinar directorio y nombre de archivo
-    subdir = TYPE_DIR[concept_type]
+    subdir = type_dir[concept_type]
     slug = _slugify(title)
     filename = f"{slug}.md"
     filepath = vault / subdir / filename
@@ -239,7 +247,7 @@ def run(args, vault):
         return 1
 
     frontmatter = _build_frontmatter(concept_type, title, description,
-                                     status, resource, tags, cyber)
+                                     status, resource, tags, cyber, config)
     if body_file:
         try:
             body_text = Path(body_file).read_text(encoding="utf-8")
@@ -249,7 +257,7 @@ def run(args, vault):
     if body_text:
         body = f"\n# {title.strip()}\n\n{body_text.strip()}\n"
     else:
-        template = BODY_TEMPLATES.get(concept_type, "## Contexto\n\n(Contenido)\n")
+        template = config.get_template(concept_type) if config else BODY_TEMPLATES.get(concept_type, "## Contexto\n\n(Contenido)\n")
         body = f"\n# {title.strip()}\n\n{template}"
     content = frontmatter + body
 
@@ -265,7 +273,7 @@ def run(args, vault):
 
     print(f"✅ Creado: {filepath}")
     print(f"   Type: {concept_type} | Status: {status or '(sin status)'}")
-    if cyber and concept_type in CYBER_TYPES:
-        print(f"   🧠 Bloque cyber: incluido (outcome: pending, review_on: +14d)")
+    if cyber and concept_type in (set(config.types_cyber) if config else CYBER_TYPES):
+        print(f"   🧠 Bloque cyber: incluido (outcome: pending, review_on: +{config.cyber_review_days if config else 14}d)")
     print(f"\n   Siguiente paso: editar body y hacer commit.")
     return 0

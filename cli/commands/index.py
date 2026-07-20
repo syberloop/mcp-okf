@@ -380,7 +380,7 @@ def _generate_log(vault):
     return "\n".join(lines) + "\n"
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Regenera index.md y log.md."""
     regenerated = []
 

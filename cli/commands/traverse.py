@@ -115,7 +115,7 @@ def _resolve_cyber_ref(ref, vault, name_index):
     return None
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Ejecuta travesía semántica del grafo desde un concepto origen."""
     target = getattr(args, "target", None)
     if not target:

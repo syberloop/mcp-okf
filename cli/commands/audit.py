@@ -12,7 +12,7 @@ from cli.frontmatter import parse_frontmatter, validate_frontmatter
 from cli.wikilinks import extract_links
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Audita frontmatter de todos los conceptos del vault."""
     all_files = find_md_files(vault)
     ok = 0

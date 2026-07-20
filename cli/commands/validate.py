@@ -239,7 +239,7 @@ def _validate_file(filepath, vault):
     return True, ""
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Ejecuta validación de frontmatter."""
     target = getattr(args, "target", None)
     validate_all = getattr(args, "all", False)

@@ -242,14 +242,14 @@ def _check_broken_links(vault):
 
 # ── Check 5: Scripts funcionales ──
 
-def _check_scripts(vault):
+def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
     """Smoke test: los comandos del CLI funcionan (vía subprocess, autocontenido)."""
     cli_module = str((Path(__file__).resolve().parent.parent.parent))
 
     tests = [
         (["graph", "stats"], 15),
         (["search"], 10),
-        (["traverse", "tp3-cibernetico", "--depth", "1"], 15),
+        (["traverse", smoke_entry_point, "--depth", "1"], 15),
         (["validate", "--all"], 15),
         (["touch", "--all"], 10),
         (["audit"], 10),
@@ -305,8 +305,10 @@ def _check_git_hook(vault):
 
 # ── Check 7: Bloque cyber ──
 
-def _check_cyber(vault):
+def _check_cyber(vault, excluded_cyber=None):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if excluded_cyber is None:
+        excluded_cyber = EXCLUDED_CYBER_TYPES
     ok, warnings, errors = 0, [], []
 
     for f in find_md_files(vault):
@@ -329,7 +331,7 @@ def _check_cyber(vault):
         outcome = str(cyber.get("outcome", ""))
         review_on = str(cyber.get("review_on", "")) if cyber.get("review_on") else ""
 
-        if concept_type in EXCLUDED_CYBER_TYPES:
+        if concept_type in excluded_cyber:
             errors.append(f"{rel}: bloque cyber: en type '{concept_type}' "
                           f"(excluido — solo Decision/Plan/Project/Insight)")
             continue
@@ -434,9 +436,13 @@ def _check_plugin_hash_sync(vault):
 
     return ok, stale
 
-def run(args, vault):
+def run(args, vault, config=None):
     strict = getattr(args, "strict", False)
     json_out = getattr(args, "json", False)
+
+    # Resolver desde config o defaults
+    smoke_entry = config.health_smoke_entry_point if config else "tp3-cibernetico"
+    plugin_hash_enabled = config.features_plugin_hash_sync if config else True
 
     if not vault.exists():
         msg = f"Error: vault no encontrado en {vault}"
@@ -474,7 +480,7 @@ def run(args, vault):
     all_warnings.extend(broken[:15])
 
     # 5. Scripts
-    scripts_ok, scripts_failed = _check_scripts(vault)
+    scripts_ok, scripts_failed = _check_scripts(vault, smoke_entry_point=smoke_entry)
     results["scripts"] = {"ok": scripts_ok, "failed": len(scripts_failed), "details": scripts_failed}
     all_errors.extend(scripts_failed)
 
@@ -485,22 +491,28 @@ def run(args, vault):
         all_errors.append(hook_err)
 
     # 7. Bloque cyber
-    cyber_ok, cyber_warn, cyber_err = _check_cyber(vault)
+    excluded_cyber = config.types_excluded_cyber if config else EXCLUDED_CYBER_TYPES
+    cyber_ok, cyber_warn, cyber_err = _check_cyber(vault, excluded_cyber=excluded_cyber)
     results["cyber"] = {"ok": cyber_ok, "warnings": len(cyber_warn),
                         "errors": len(cyber_err),
                         "details": cyber_err[:10] + cyber_warn[:10]}
     all_warnings.extend(cyber_warn)
     all_errors.extend(cyber_err)
 
-    # 8. Sincronización plugin↔spec
-    plugin_ok, plugin_stale = _check_plugin_hash_sync(vault)
-    results["plugin_hash_sync"] = {"ok": plugin_ok, "stale": len(plugin_stale),
-                                   "details": plugin_stale}
-    all_warnings.extend(plugin_stale)
+    # 8. Sincronización plugin↔spec (opcional, según feature flag)
+    checks_total = 7  # default: sin plugin hash sync
+    if plugin_hash_enabled:
+        checks_total = 8
+        plugin_ok, plugin_stale = _check_plugin_hash_sync(vault)
+        results["plugin_hash_sync"] = {"ok": plugin_ok, "stale": len(plugin_stale),
+                                       "details": plugin_stale}
+        all_warnings.extend(plugin_stale)
+    else:
+        results["plugin_hash_sync"] = {"ok": 0, "stale": 0,
+                                       "details": ["desactivado (features.plugin_hash_sync: false)"]}
 
     # Score
-    checks_total = 8
-    checks_ok = sum([
+    score_items = [
         1 if len(fm_bad) == 0 else 0,
         1 if len(idx_stale) == 0 else 0,
         1 if graph_data and graph_data.get("orphans", 99) == 0 else 0,
@@ -508,8 +520,11 @@ def run(args, vault):
         1 if len(scripts_failed) == 0 else 0,
         1 if hook_ok else 0,
         1 if len(cyber_err) == 0 else 0,
-        1 if len(plugin_stale) == 0 else 0,
-    ])
+    ]
+    if plugin_hash_enabled:
+        score_items.append(1 if len(plugin_stale) == 0 else 0)
+    checks_ok = sum(score_items)
+    checks_total = len(score_items)
 
     if json_out:
         print(json.dumps({

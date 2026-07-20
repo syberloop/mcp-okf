@@ -30,7 +30,7 @@ def _find_file(target, vault):
     return None
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Lee un concepto del vault."""
     target = getattr(args, "target", None)
     if not target:

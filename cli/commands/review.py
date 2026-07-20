@@ -64,7 +64,7 @@ def collect_due(vault):
     return due
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Ejecuta la revisión cibernética."""
     json_out = getattr(args, "json", False)
     count_only = getattr(args, "count", False)

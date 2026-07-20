@@ -127,7 +127,7 @@ def _build_dashboard(vault):
     return "\n".join(lines) + "\n"
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Genera dashboard.md."""
     dashboard_content = _build_dashboard(vault)
     dashboard_path = vault / "dashboard.md"

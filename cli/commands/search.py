@@ -364,7 +364,7 @@ def _print_table(concepts):
     print(f"{len(concepts)} concepto(s)")
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Ejecuta búsqueda de conceptos o tareas."""
     json_out = getattr(args, "json", False)
     todos_mode = getattr(args, "todos", False)

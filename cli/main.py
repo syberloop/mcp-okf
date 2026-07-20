@@ -40,6 +40,8 @@ def build_parser():
     )
     parser.add_argument("--vault", type=str, default=None,
                         help="Ruta al vault (default: $OKF_VAULT o ~/OKF-Vault)")
+    parser.add_argument("--config", type=str, default=None,
+                        help="Ruta a .okf.config.yaml (default: <vault>/.okf.config.yaml)")
 
     subparsers = parser.add_subparsers(dest="command", help="Comando a ejecutar")
 
@@ -188,6 +190,14 @@ def main(argv=None):
         print("Usa --vault o settea $OKF_VAULT para especificar otra ruta.", file=sys.stderr)
         sys.exit(1)
 
+    # Cargar configuración externalizada
+    from cli.config import Config
+    config = Config(vault, cli_config_arg=getattr(args, "config", None))
+
+    # Propagar exclusiones a las variables globales de vault.py (backward compat)
+    from cli.vault import apply_config
+    apply_config(config)
+
     # Asegurar que el directorio del CLI esté en path para imports
     cli_dir = Path(__file__).resolve().parent
     if str(cli_dir.parent) not in sys.path:
@@ -198,59 +208,59 @@ def main(argv=None):
 
     if command == "search":
         from cli.commands.search import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "read":
         from cli.commands.read import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "traverse":
         from cli.commands.traverse import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "graph":
         from cli.commands.graph import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "health":
         from cli.commands.health import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "index":
         from cli.commands.index import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "new":
         from cli.commands.new import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "touch":
         from cli.commands.touch import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "dashboard":
         from cli.commands.dashboard import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "stale":
         from cli.commands.stale import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "session-metrics":
         from cli.commands.session_metrics import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "review":
         from cli.commands.review import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "audit":
         from cli.commands.audit import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     elif command == "validate":
         from cli.commands.validate import run
-        sys.exit(run(args, vault))
+        sys.exit(run(args, vault, config))
 
     else:
         print(f"Comando desconocido: {command}", file=sys.stderr)

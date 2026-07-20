@@ -39,7 +39,7 @@ def _show_stats(vault):
     return 0
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Incrementa contador de lecturas o muestra estadísticas."""
     if getattr(args, "all", False):
         return _show_stats(vault)

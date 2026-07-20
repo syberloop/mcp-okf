@@ -49,7 +49,7 @@ def _parse_metrics_section(body):
     return metrics
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Genera métricas agregadas de todas las sesiones."""
     sesiones_dir = vault / "sesiones"
     if not sesiones_dir.exists():

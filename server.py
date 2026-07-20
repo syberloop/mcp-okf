@@ -27,11 +27,24 @@ VAULT = Path.home() / "OKF-Vault"
 MCP_DIR = Path(__file__).parent  # ~/.hermes/mcp-servers/okf
 CLI = ["python3", "-m", "cli", "--vault", str(VAULT)]
 
-# Persistencia Cognitive Trace
-HERMES_DIR = Path.home() / ".hermes"
-DB_PATH = HERMES_DIR / "cognitive-trace.db"
-JSONL_DIR = VAULT / ".obsidian" / "plugins" / "cognitive-trace"
-JSONL_PATH = JSONL_DIR / "event_log.jsonl"
+# Configuración externalizada (se carga al iniciar)
+from cli.config import Config
+_config = Config(VAULT)
+# Inyectar exclusiones en vault.py
+from cli.vault import apply_config
+apply_config(_config)
+
+# Persistencia Cognitive Trace (feature flag)
+if _config.features_cognitive_trace:
+    HERMES_DIR = Path.home() / ".hermes"
+    DB_PATH = HERMES_DIR / "cognitive-trace.db"
+    JSONL_DIR = VAULT / ".obsidian" / "plugins" / "cognitive-trace"
+    JSONL_PATH = JSONL_DIR / "event_log.jsonl"
+else:
+    HERMES_DIR = None
+    DB_PATH = None
+    JSONL_DIR = None
+    JSONL_PATH = None
 JSONL_LOCK = threading.Lock()
 
 # Máximo de result_nodes por evento (bound del tamaño de línea JSONL)
@@ -60,6 +73,8 @@ def _get_session_id() -> str:
 
 def _init_db() -> None:
     """Crea tablas e índices si no existen."""
+    if DB_PATH is None or JSONL_DIR is None:
+        return  # Cognitive Trace desactivado
     JSONL_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.executescript("""
@@ -106,6 +121,8 @@ def _init_db() -> None:
 def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedProcess",
                    duration_ms: int, nodes_count: int | None = None) -> None:
     """Escribe el evento a SQLite."""
+    if DB_PATH is None:
+        return  # Cognitive Trace desactivado
     try:
         exit_code = result.returncode
         error = None
@@ -133,6 +150,8 @@ def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedPr
 
 def _append_jsonl(event: dict) -> None:
     """Escribe una línea JSON al event_log.jsonl."""
+    if JSONL_PATH is None:
+        return  # Cognitive Trace desactivado
     try:
         JSONL_DIR.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False) + "\n"

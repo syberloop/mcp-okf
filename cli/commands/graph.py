@@ -376,7 +376,7 @@ def _cmd_dump(graph):
     return "\n".join(lines)
 
 
-def run(args, vault):
+def run(args, vault, config=None):
     """Ejecuta análisis de grafo."""
     subcommand = getattr(args, "subcommand", None)
     sub_args = getattr(args, "args", [])
