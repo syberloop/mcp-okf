@@ -12,6 +12,15 @@ Servidor MCP (Model Context Protocol) para el vault OKF. Expone 14 tools que wra
 pip install mcp
 ```
 
+## Instalación
+
+```bash
+git clone <repo-url> && cd okf-mcp
+pip install .
+```
+
+Esto instala el comando `okf-mcp` en el PATH y deja el paquete listo para usar.
+
 ## Configuración en Claude Code
 
 Agregar a `~/.claude/.mcp.json` o a `<proyecto>/.mcp.json`:
@@ -20,19 +29,32 @@ Agregar a `~/.claude/.mcp.json` o a `<proyecto>/.mcp.json`:
 {
   "mcpServers": {
     "okf": {
-      "command": "python3",
-      "args": ["/home/jota/.hermes/mcp-servers/okf/server.py"],
-      "cwd": "/home/jota/.hermes/mcp-servers/okf"
+      "command": "okf-mcp",
+      "args": []
     }
   }
 }
 ```
 
-### ⚠️ La ruta en `args` DEBE ser absoluta
+### Desarrollo (sin instalar)
+
+Si no querés instalar el paquete, podés apuntar directamente a `server.py`:
+
+```json
+{
+  "mcpServers": {
+    "okf": {
+      "command": "python3",
+      "args": ["/ruta/absoluta/al/server.py"],
+      "cwd": "/ruta/absoluta/al/repo"
+    }
+  }
+}
+```
+
+### ⚠️ La ruta en `args` DEBE ser absoluta cuando usás `python3 server.py`
 
 Claude Code **no resuelve rutas relativas en `args`** aunque tenga el campo `cwd`. Si usás `"args": ["server.py"]`, el proceso nunca se spawneará y el servidor no cargará (sin error visible, simplemente no aparece).
-
-Siempre usá la ruta absoluta al script:
 
 ```json
 // ✅ CORRECTO
@@ -41,6 +63,8 @@ Siempre usá la ruta absoluta al script:
 // ❌ INCORRECTO — no carga
 "args": ["server.py"]
 ```
+
+Esta limitación no aplica al comando `okf-mcp` (recomendado).
 
 ## Tools disponibles
 

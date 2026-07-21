@@ -1,0 +1,15 @@
+[project]
+name = "okf-mcp"
+version = "1.28.1"
+description = "MCP server para el vault OKF — 14 tools para que agentes AI consulten, creen y analicen conceptos"
+requires-python = ">=3.12"
+dependencies = ["mcp[cli]>=1.0.0"]
+license = { text = "MIT" }
+readme = "README.md"
+
+[project.scripts]
+okf-mcp = "server:mcp.run"
+
+[tool.setuptools]
+py-modules = ["server", "measure"]
+packages = ["cli", "cli.commands"]
