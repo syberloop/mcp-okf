@@ -67,6 +67,10 @@ def build_parser():
                            help="Valor del campo --cyber-field")
     sp_search.add_argument("--review-due", action="store_true", default=False,
                            help="Solo conceptos con cyber.review_on <= hoy")
+    sp_search.add_argument("--since", type=str, default=None,
+                           help="Filtrar por timestamp >= fecha (ISO 8601, inclusivo)")
+    sp_search.add_argument("--until", type=str, default=None,
+                           help="Filtrar por timestamp <= fecha (ISO 8601, inclusivo)")
 
     # ── read ──
     sp_read = subparsers.add_parser("read", help="Leer un concepto")

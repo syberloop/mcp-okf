@@ -369,13 +369,14 @@ def okf_traverse(slug: str, depth: int = 2, direction: str = "both", no_cyber: b
 
 
 @mcp.tool()
-def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False) -> str:
+def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "") -> str:
     """Búsqueda FTS5 en el vault OKF. FALLBACK — preferir okf_traverse o lectura de índices.
 
     Usar solo cuando:
     - La travesía no encuentra ruta en ≤6 hops
     - Se necesita filtrar por campos específicos (type, status, cyber)
     - Se buscan tareas pendientes (--todos)
+    - Se necesita filtrar por rango de fechas (--since, --until)
 
     Args:
         query: Término de búsqueda (opcional si se usa --todos o --type)
@@ -385,6 +386,8 @@ def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: s
         cyber_value: Valor del campo cyber (pending, success, failure)
         todos: Si True, busca tareas - [ ] pendientes
         json_output: Si True, salida JSON
+        since: Filtrar por timestamp >= fecha (ISO 8601, inclusivo, ej: "2026-07-20")
+        until: Filtrar por timestamp <= fecha (ISO 8601, inclusivo)
     """
     args = ["search"]
     if query:
@@ -401,10 +404,15 @@ def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: s
         args.append("--todos")
     if json_output:
         args.append("--json")
+    if since:
+        args += ["--since", since]
+    if until:
+        args += ["--until", until]
     return _run(args, tool_name="okf_search", params={
         "query": query, "type": type, "status": status,
         "cyber_field": cyber_field, "cyber_value": cyber_value,
         "todos": todos, "json_output": json_output,
+        "since": since, "until": until,
     })
 
 

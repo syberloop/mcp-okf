@@ -376,6 +376,8 @@ def run(args, vault, config=None):
     cyber_field = getattr(args, "cyber_field", None)
     cyber_value = getattr(args, "cyber_value", None)
     review_due = getattr(args, "review_due", False)
+    since = getattr(args, "since", None)
+    until = getattr(args, "until", None)
 
     if with_aging and not todos_mode:
         print("Error: --aging solo funciona con --todos", file=sys.stderr)
@@ -435,6 +437,39 @@ def run(args, vault, config=None):
             review_on = cyber.get("review_on")
             if review_on and str(review_on) <= today_str:
                 filtered.append(c)
+        concepts = filtered
+
+    if since or until:
+        try:
+            since_dt = datetime.fromisoformat(since) if since else None
+            until_dt = datetime.fromisoformat(until) if until else None
+            # Asegurar timezone-aware: si la entrada es naive, asumir UTC
+            if since_dt and since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=timezone.utc)
+            if until_dt and until_dt.tzinfo is None:
+                until_dt = until_dt.replace(tzinfo=timezone.utc)
+        except ValueError as e:
+            print(f"Error: fecha inválida — {e}", file=sys.stderr)
+            return 1
+        filtered = []
+        for c in concepts:
+            ts_raw = c.get("timestamp", "")
+            if not ts_raw:
+                continue
+            try:
+                ts_dt = datetime.fromisoformat(ts_raw)
+            except ValueError:
+                continue
+            # Normalizar a UTC para comparación
+            if ts_dt.tzinfo is not None:
+                ts_dt = ts_dt.astimezone(timezone.utc)
+            else:
+                ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+            if since_dt and ts_dt < since_dt:
+                continue
+            if until_dt and ts_dt > until_dt:
+                continue
+            filtered.append(c)
         concepts = filtered
 
     if json_out:
