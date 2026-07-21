@@ -457,6 +457,7 @@ def run(args, vault, config=None):
             if not ts_raw:
                 continue
             try:
+                ts_raw = ts_raw.strip().strip('"').strip("'")
                 ts_dt = datetime.fromisoformat(ts_raw)
             except ValueError:
                 continue
