@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 # Constantes unificadas — defaults embebidos (pisan por Config si existe .okf.config.yaml)
-DEFAULT_EXCLUDE_FILES = {"index.md", "log.md", "dashboard.md", "CLAUDE.md"}
+DEFAULT_EXCLUDE_FILES = {"index.md", "log.md", "dashboard.md", "AGENTS.md"}
 DEFAULT_EXCLUDE_DIRS = {".git", ".obsidian", "Templates", "scripts", "references", "assets"}
 
 # Referencia mutable: los comandos que instancian Config las pisan.
