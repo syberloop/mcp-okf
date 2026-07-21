@@ -9,7 +9,7 @@ from pathlib import Path
 # Types MECE permitidos — defaults (pisan por Config si existe .okf.config.yaml)
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
-    "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow",
+    "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow", "Criterio",
 }
 
 # Types que califican para bloque cyber: — defaults
@@ -29,6 +29,7 @@ TYPE_DIR = {
     "Spec": "specs",
     "Skill": "sistema/skills",
     "Workflow": "workflows",
+    "Criterio": "criterios",
 }
 
 BODY_TEMPLATES = {
