@@ -1,6 +1,6 @@
 """Comando health — Verificación completa de integridad del vault OKF.
 
-8 chequeos:
+9 chequeos:
     1. Frontmatter válido (type + description)
     2. Índices sincronizados
     3. Grafo conectado (huérfanos, densidad, tags)
@@ -9,6 +9,7 @@
     6. Git hook presente
     7. Bloque cyber: válido
     8. Sincronización plugin↔spec (plugin_hash vs HEAD del repo)
+    9. Timestamp vs git (consistencia fecha creación)
 """
 
 import json
@@ -270,14 +271,11 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
                 env={**os.environ, "PYTHONPATH": cli_module},
             )
             if result.returncode != 0:
-                # review --count usa exit code 1 para indicar "hay items pendientes" (no es error)
                 if cmd_args == ["review", "--count"] and result.returncode == 1:
                     ok += 1
                 else:
-                    # Capturar el output completo del error (stdout o stderr)
                     err_output = (result.stderr or result.stdout).strip()
                     err_lines = err_output.split("\n")
-                    # Tomar las primeras 5 líneas del error para diagnóstico
                     err = "; ".join(line.strip() for line in err_lines[:5] if line.strip())
                     if not err:
                         err = f"exit {result.returncode}"
@@ -351,11 +349,7 @@ def _check_cyber(vault, excluded_cyber=None):
 # ── Check 8: Sincronización plugin↔spec ──
 
 def _check_plugin_hash_sync(vault):
-    """Verifica que plugin_hash en specs coincida con HEAD del repo del plugin.
-
-    Busca specs con plugin_hash en el frontmatter. Para cada una, intenta
-    encontrar el repo local en ~/.hermes/plugins/<nombre>/ y comparar hashes.
-    """
+    """Verifica que plugin_hash en specs coincida con HEAD del repo del plugin."""
     specs_dir = vault / "specs"
     plugins_dir = Path.home() / ".hermes" / "plugins"
     ok, stale = 0, []
@@ -378,10 +372,7 @@ def _check_plugin_hash_sync(vault):
             continue
 
         spec_name = spec_file.stem
-        desc = str(fm.get("description", ""))
 
-        # Intentar encontrar el plugin local por nombre
-        # Patrones: "plugin-session-summarizer-..." → "session-summarizer"
         plugin_name = spec_name
         for prefix in ("plugin-", "hermes-"):
             if plugin_name.startswith(prefix):
@@ -390,20 +381,15 @@ def _check_plugin_hash_sync(vault):
 
         plugin_dir = plugins_dir / plugin_name
         if not (plugin_dir / ".git").exists():
-            # Buscar por nombre aproximado: el nombre base del plugin
-            # como substring del nombre del directorio
             found = False
             if plugins_dir.is_dir():
                 for d in plugins_dir.iterdir():
                     if not d.is_dir() or not (d / ".git").exists():
                         continue
-                    # El nombre del directorio debe ser substring del nombre extraido
-                    # Ej: "session-summarizer" ⊂ "session-summarizer-resumidor-de-..."
                     if d.name in plugin_name or plugin_name in d.name:
                         plugin_dir = d
                         found = True
                         break
-                    # También probar con la primera parte del nombre
                     base = plugin_name.split("-")[0]
                     if base and d.name.startswith(base):
                         plugin_dir = d
@@ -436,11 +422,74 @@ def _check_plugin_hash_sync(vault):
 
     return ok, stale
 
+
+# ── Check 9: Timestamp vs git ──
+
+def _check_timestamp_git(vault):
+    """Verifica que el timestamp del frontmatter coincida con la fecha de creación en git."""
+    ok, warnings, errors = 0, [], []
+
+    for f in find_md_files(vault):
+        rel = str(f.relative_to(vault))
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        fm, _ = parse_frontmatter(text)
+        if fm is None:
+            continue
+
+        ts_raw = fm.get("timestamp")
+        if not ts_raw:
+            if rel.endswith("/index.md") or rel.endswith("/log.md"):
+                continue
+            parts = f.relative_to(vault).parts
+            if parts and parts[0] == "sesiones":
+                continue
+            warnings.append(f"{rel}: sin timestamp")
+            continue
+
+        ts_str = str(ts_raw).strip().strip('"').strip("'")
+        try:
+            ts_dt = datetime.fromisoformat(ts_str)
+        except ValueError:
+            errors.append(f"{rel}: timestamp inválido: '{ts_raw}'")
+            continue
+
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(vault), "log", "--diff-filter=A", "--follow",
+                 "--format=%ai", "--", rel],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                ok += 1
+                continue
+
+            first_commit = result.stdout.strip().split("\n")[-1]
+            git_dt = datetime.fromisoformat(first_commit)
+
+            ts_date = ts_dt.astimezone(timezone.utc).date() if ts_dt.tzinfo else ts_dt.date()
+            git_date = git_dt.astimezone(timezone.utc).date() if git_dt.tzinfo else git_dt.date()
+
+            diff_days = abs((ts_date - git_date).days)
+            if diff_days > 1:
+                warnings.append(
+                    f"{rel}: timestamp={ts_date} ≠ git={git_date} ({diff_days}d diferencia)"
+                )
+            else:
+                ok += 1
+        except Exception:
+            ok += 1
+
+    return ok, warnings, errors
+
+
 def run(args, vault, config=None):
     strict = getattr(args, "strict", False)
     json_out = getattr(args, "json", False)
 
-    # Resolver desde config o defaults
     smoke_entry = config.health_smoke_entry_point if config else "tp3-cibernetico"
     plugin_hash_enabled = config.features_plugin_hash_sync if config else True
 
@@ -499,8 +548,8 @@ def run(args, vault, config=None):
     all_warnings.extend(cyber_warn)
     all_errors.extend(cyber_err)
 
-    # 8. Sincronización plugin↔spec (opcional, según feature flag)
-    checks_total = 7  # default: sin plugin hash sync
+    # 8. Sincronización plugin↔spec
+    checks_total = 7
     if plugin_hash_enabled:
         checks_total = 8
         plugin_ok, plugin_stale = _check_plugin_hash_sync(vault)
@@ -511,7 +560,16 @@ def run(args, vault, config=None):
         results["plugin_hash_sync"] = {"ok": 0, "stale": 0,
                                        "details": ["desactivado (features.plugin_hash_sync: false)"]}
 
+    # 9. Timestamp vs git
+    ts_ok, ts_warn, ts_err = _check_timestamp_git(vault)
+    results["timestamp_git"] = {"ok": ts_ok, "warnings": len(ts_warn),
+                                "errors": len(ts_err),
+                                "details": ts_warn[:10] + ts_err[:5]}
+    all_warnings.extend(ts_warn)
+    all_errors.extend(ts_err)
+
     # Score
+    checks_total = 8  # base 8 (1-8)
     score_items = [
         1 if len(fm_bad) == 0 else 0,
         1 if len(idx_stale) == 0 else 0,
@@ -520,11 +578,12 @@ def run(args, vault, config=None):
         1 if len(scripts_failed) == 0 else 0,
         1 if hook_ok else 0,
         1 if len(cyber_err) == 0 else 0,
+        1 if len(ts_err) == 0 and len(ts_warn) == 0 else 0,  # check 9
     ]
     if plugin_hash_enabled:
+        checks_total += 1
         score_items.append(1 if len(plugin_stale) == 0 else 0)
     checks_ok = sum(score_items)
-    checks_total = len(score_items)
 
     if json_out:
         print(json.dumps({
@@ -604,6 +663,19 @@ def run(args, vault, config=None):
     elif total_plugins > 0:
         print(f"✅ Plugin↔spec: {total_plugins}/{total_plugins} sincronizados")
 
+    # Timestamp vs git
+    total_ts = ts_ok + len(ts_warn) + len(ts_err)
+    if ts_err:
+        print(f"❌ Timestamp↔git: {ts_ok}/{total_ts} ok, {len(ts_err)} errores")
+        for e in ts_err[:3]:
+            print(f"   - {e}")
+    elif ts_warn:
+        print(f"⚠️  Timestamp↔git: {ts_ok}/{total_ts} ok, {len(ts_warn)} warnings")
+        for w in ts_warn[:3]:
+            print(f"   - {w}")
+    else:
+        print(f"✅ Timestamp↔git: {ts_ok}/{total_ts} coinciden")
+
     print("─" * 54)
     if all_errors:
         print(f"🔴 Salud: {checks_ok}/{checks_total} — {len(all_errors)} errores, "
@@ -616,4 +688,3 @@ def run(args, vault, config=None):
     if strict and (all_errors or all_warnings):
         return 1
     return 0
-# test hook
