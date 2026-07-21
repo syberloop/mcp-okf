@@ -2,7 +2,7 @@
 
 Valida que:
 1. yaml.safe_load() parsea el frontmatter sin errores
-2. Campos obligatorios (type, description) presentes y no vacíos
+2. Campos obligatorios (type, description, timestamp) presentes y no vacíos
 3. Wikilinks no están envueltos en backticks (Obsidian los rompe)
 4. Wikilinks están sintácticamente completos ([[ debe tener su cierre ]])
 5. Wikilinks con alias (|) dentro de tablas escapan la pipe con \|
@@ -78,8 +78,9 @@ def _check_malformed_wikilinks(body, rel):
     """
     errors = []
 
-    # Eliminar bloques de código fenced para evitar falsos positivos
+    # Eliminar bloques de código fenced (```...```) e inline code (`...`) para evitar falsos positivos
     clean = re.sub(r'```[\s\S]*?```', '', body)
+    clean = re.sub(r'`[^`]+`', '', clean)
 
     for i, line in enumerate(clean.split("\n"), 1):
         # Buscar [[ que no tenga ]] después en la misma línea
@@ -212,6 +213,12 @@ def _validate_file(filepath, vault):
     desc = fm.get("description")
     if not desc or not str(desc).strip():
         all_errors.append("falta 'description'")
+    # timestamp: obligatorio excepto en sesiones/ (auto-generadas)
+    # y sistema/skills/ (skills de Hermes, no conceptos OKF)
+    if not rel.startswith("sesiones/") and not rel.startswith("sistema/skills/"):
+        ts = fm.get("timestamp")
+        if not ts or not str(ts).strip():
+            all_errors.append("falta 'timestamp'")
 
     # ── Validación 3: Wikilinks en backticks ──
     wl_errors = _check_wikilinks_in_backticks(body, rel)
