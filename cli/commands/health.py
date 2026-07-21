@@ -426,7 +426,14 @@ def _check_plugin_hash_sync(vault):
 # ── Check 9: Timestamp vs git ──
 
 def _check_timestamp_git(vault):
-    """Verifica que el timestamp del frontmatter coincida con la fecha de creación en git."""
+    """Verifica que el timestamp del frontmatter sea coherente con git.
+
+    El timestamp en OKF es 'last meaningful change'. En la práctica, okf_new lo
+    setea al crear y rara vez se actualiza. Este check verifica dos cosas:
+    1. El archivo TIENE timestamp (warning si falta, excepto index/log/sesiones)
+    2. El timestamp no es anterior al primer commit ni muy posterior al último
+       (señal de timestamp inventado o desincronizado)
+    """
     ok, warnings, errors = 0, [], []
 
     for f in find_md_files(vault):
@@ -457,29 +464,42 @@ def _check_timestamp_git(vault):
             errors.append(f"{rel}: timestamp inválido: '{ts_raw}'")
             continue
 
+        ts_date = ts_dt.astimezone(timezone.utc).date() if ts_dt.tzinfo else ts_dt.date()
+
         try:
-            result = subprocess.run(
+            # Último commit (para detectar timestamps futuros)
+            result_last = subprocess.run(
+                ["git", "-C", str(vault), "log", "-1", "--format=%ai", "--", rel],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result_last.returncode == 0 and result_last.stdout.strip():
+                last_dt = datetime.fromisoformat(result_last.stdout.strip())
+                last_date = last_dt.astimezone(timezone.utc).date() if last_dt.tzinfo else last_dt.date()
+                # Timestamp >1 día en el futuro respecto al último commit
+                if (ts_date - last_date).days > 1:
+                    warnings.append(
+                        f"{rel}: timestamp={ts_date} es futuro vs git last-edit={last_date}"
+                    )
+                    continue
+
+            # Primer commit (para detectar timestamps anteriores a la existencia del archivo)
+            result_first = subprocess.run(
                 ["git", "-C", str(vault), "log", "--diff-filter=A", "--follow",
                  "--format=%ai", "--", rel],
                 capture_output=True, text=True, timeout=10,
             )
-            if result.returncode != 0 or not result.stdout.strip():
-                ok += 1
-                continue
+            if result_first.returncode == 0 and result_first.stdout.strip():
+                first_commit = result_first.stdout.strip().split("\n")[-1]
+                first_dt = datetime.fromisoformat(first_commit)
+                first_date = first_dt.astimezone(timezone.utc).date() if first_dt.tzinfo else first_dt.date()
+                # Timestamp >30 días anterior al primer commit (probablemente inventado)
+                if (first_date - ts_date).days > 30:
+                    warnings.append(
+                        f"{rel}: timestamp={ts_date} es muy anterior a git created={first_date}"
+                    )
+                    continue
 
-            first_commit = result.stdout.strip().split("\n")[-1]
-            git_dt = datetime.fromisoformat(first_commit)
-
-            ts_date = ts_dt.astimezone(timezone.utc).date() if ts_dt.tzinfo else ts_dt.date()
-            git_date = git_dt.astimezone(timezone.utc).date() if git_dt.tzinfo else git_dt.date()
-
-            diff_days = abs((ts_date - git_date).days)
-            if diff_days > 1:
-                warnings.append(
-                    f"{rel}: timestamp={ts_date} ≠ git={git_date} ({diff_days}d diferencia)"
-                )
-            else:
-                ok += 1
+            ok += 1
         except Exception:
             ok += 1
 
