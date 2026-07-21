@@ -191,6 +191,7 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
         lines.append(f"tags: [{', '.join(tag_list)}]")
 
     lines.append(f"timestamp: {now}")
+    lines.append(f"created: {now}")
 
     # Resolver cyber_types desde config o fallback
     cyber_types = set(config.types_cyber) if config else CYBER_TYPES

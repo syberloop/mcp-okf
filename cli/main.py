@@ -168,6 +168,13 @@ def build_parser():
     sp_validate.add_argument("--all", action="store_true", default=False,
                              help="Validar todos los conceptos del vault")
 
+    # ── file-info ──
+    sp_file_info = subparsers.add_parser("file-info", help="Metadatos de fecha de un concepto")
+    sp_file_info.add_argument("--slug", type=str, required=True,
+                              help="Slug del concepto (ej: 'frameworks/tp3-cibernetico')")
+    sp_file_info.add_argument("--json", action="store_true", default=False,
+                              help="Salida JSON")
+
     return parser
 
 
@@ -264,6 +271,10 @@ def main(argv=None):
 
     elif command == "validate":
         from cli.commands.validate import run
+        sys.exit(run(args, vault, config))
+
+    elif command == "file-info":
+        from cli.commands.file_info import run
         sys.exit(run(args, vault, config))
 
     else:

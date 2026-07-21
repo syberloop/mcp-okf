@@ -960,6 +960,26 @@ def okf_graph_command(action: str, nodes: str = "", tag: str = "",
 
 
 @mcp.tool()
+def okf_file_info(slug: str, json_output: bool = False) -> str:
+    """Metadatos de fecha de un concepto del vault OKF.
+
+    Devuelve:
+        - created: fecha del primer commit en git (creación real)
+        - updated: fecha del último commit en git (última edición)
+        - timestamp: valor del campo 'timestamp' en frontmatter (last meaningful change)
+        - created_fm: valor del campo 'created' en frontmatter (fecha de creación OKF)
+
+    Args:
+        slug: Slug del concepto (ej: 'frameworks/tp3-cibernetico')
+        json_output: Si True, salida JSON
+    """
+    args = ["file-info", "--slug", slug]
+    if json_output:
+        args.append("--json")
+    return _run(args, tool_name="okf_file_info", params={"slug": slug, "json_output": json_output})
+
+
+@mcp.tool()
 def okf_review() -> str:
     """Busca conceptos con cyber.review_on vencido y los reporta.
 
