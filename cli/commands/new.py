@@ -28,9 +28,10 @@ TYPE_DIR = {
     "LeccionAprendida": "historias",
     "Tool": "specs",
     "Spec": "specs",
-    "Skill": "sistema/skills",
+    "Skill": "skills",
     "Workflow": "workflows",
     "Criterio": "criterios",
+    "Sesion": "sesiones",
 }
 
 BODY_TEMPLATES = {
@@ -242,8 +243,13 @@ def run(args, vault, config=None):
     # Determinar directorio y nombre de archivo
     subdir = type_dir[concept_type]
     slug = _slugify(title)
-    filename = f"{slug}.md"
-    filepath = vault / subdir / filename
+    # Skill usa subdirectorio propio con SKILL.md (convención post-refactor)
+    if concept_type == "Skill":
+        filename = "SKILL.md"
+        filepath = vault / subdir / slug / filename
+    else:
+        filename = f"{slug}.md"
+        filepath = vault / subdir / filename
 
     if filepath.exists():
         print(f"❌ Ya existe: {filepath}", file=sys.stderr)
@@ -258,10 +264,10 @@ def run(args, vault, config=None):
             print(f"❌ Error leyendo body-file: {e}", file=sys.stderr)
             return 1
     if body_text:
-        body = f"\n# {title.strip()}\n\n{body_text.strip()}\n"
+        body = f"\n{body_text.strip()}\n"
     else:
         template = config.get_template(concept_type) if config else BODY_TEMPLATES.get(concept_type, "## Contexto\n\n(Contenido)\n")
-        body = f"\n# {title.strip()}\n\n{template}"
+        body = f"\n{template}"
     content = frontmatter + body
 
     if dry_run:

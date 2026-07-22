@@ -116,13 +116,23 @@ def _resolve_cyber_ref(ref, vault, name_index):
 
 
 def run(args, vault, config=None):
-    """Ejecuta travesía semántica del grafo desde un concepto origen."""
+    """Ejecuta travesía semántica del grafo desde uno o varios orígenes."""
     target = getattr(args, "target", None)
-    if not target:
+    seeds_raw = getattr(args, "seeds", None)
+
+    # Al menos uno de target o --seeds debe estar presente
+    if not target and not seeds_raw:
         print("Uso: python3 -m cli traverse <concepto> [--depth N] [--json] "
-              "[--direction both|out|in] [--no-cyber]",
+              "[--direction both|out|in] [--no-cyber]\n"
+              "      python3 -m cli traverse --seeds <c1> <c2> [...] [--depth N] [...]",
               file=sys.stderr)
         return 1
+
+    # Normalizar: si solo hay target, tratarlo como seed única
+    if seeds_raw:
+        seeds_candidates = seeds_raw
+    else:
+        seeds_candidates = [target]
 
     depth = getattr(args, "depth", 1)
     direction = getattr(args, "direction", "both")
@@ -133,19 +143,38 @@ def run(args, vault, config=None):
     graph = build_graph(vault)
     name_index = build_name_index(vault)
 
-    # Resolver concepto origen
-    resolved = _resolve_name(target, graph)
-    if resolved is None:
-        print(f"✗ No encontrado: {target}", file=sys.stderr)
+    # Resolver seeds. Las que no resuelven se ignoran con warning.
+    resolved_seeds = []
+    warnings = []
+    for seed_candidate in seeds_candidates:
+        resolved = _resolve_name(seed_candidate, graph)
+        if resolved is None:
+            warnings.append(f"No encontrado: {seed_candidate}")
+        elif resolved in resolved_seeds:
+            warnings.append(
+                f"Semilla duplicada ignorada: {seed_candidate} -> {resolved}"
+            )
+        else:
+            resolved_seeds.append(resolved)
+
+    # Si TODAS las seeds fallaron, error
+    if not resolved_seeds:
+        for w in warnings:
+            print(f"✗ {w}", file=sys.stderr)
+        print("Error: ninguna semilla pudo resolverse.", file=sys.stderr)
         return 1
 
-    # BFS con detección de ciclos
+    # BFS con detección de ciclos y visited set compartido entre seeds
     visited = set()
     nodes = []
-    queue = [(resolved, 0, "origin", None)]
+    # Queue entries: (path, depth, edge_type, from_path, seed_path)
+    queue = []
+
+    for seed_path in resolved_seeds:
+        queue.append((seed_path, 0, "origin", None, seed_path))
 
     while queue:
-        current_path, current_depth, edge_type, from_path = queue.pop(0)
+        current_path, current_depth, edge_type, from_path, seed_path = queue.pop(0)
 
         if current_path in visited:
             continue
@@ -165,6 +194,10 @@ def run(args, vault, config=None):
             "from": from_path,
             "frontmatter": fm_summary,
         }
+        # Incluir seed en multi-seed mode para trazabilidad
+        if len(resolved_seeds) > 1:
+            node["seed"] = seed_path
+
         nodes.append(node)
 
         if current_depth >= depth:
@@ -198,24 +231,42 @@ def run(args, vault, config=None):
         for neighbor_path, n_edge_type in neighbors:
             if neighbor_path not in visited:
                 queue.append(
-                    (neighbor_path, current_depth + 1, n_edge_type, current_path)
+                    (neighbor_path, current_depth + 1, n_edge_type,
+                     current_path, seed_path)
                 )
 
     # ── Output JSON ──
     if json_out:
-        print(json.dumps({
-            "origin": resolved,
+        result = {
             "depth": depth,
             "direction": direction,
             "total": len(nodes),
             "nodes": nodes,
-        }, indent=2, ensure_ascii=False))
+        }
+        if len(resolved_seeds) == 1:
+            result["origin"] = resolved_seeds[0]
+        else:
+            result["seeds"] = resolved_seeds
+        if warnings:
+            result["warnings"] = warnings
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
 
     # ── Output legible ──
-    print(f"🔗 Travesía desde: {resolved}")
+    if len(resolved_seeds) == 1:
+        print(f"🔗 Travesía desde: {resolved_seeds[0]}")
+    else:
+        print(f"🔗 Travesía desde {len(resolved_seeds)} semillas:")
+        for s in resolved_seeds:
+            print(f"   📌 {s}")
     print(f"   Profundidad: {depth} | Dirección: {direction} | "
           f"Nodos: {len(nodes)}")
+
+    if warnings:
+        print()
+        for w in warnings:
+            print(f"   ⚠️  {w}")
+
     print()
 
     for node in nodes:
@@ -250,6 +301,8 @@ def run(args, vault, config=None):
             print(f"{indent}   🏷️  {tag_str}")
         if node["from"]:
             print(f"{indent}   via {node['edge_type']} ← {node['from']}")
+        if len(resolved_seeds) > 1 and node.get("seed"):
+            print(f"{indent}   🌰 semilla: {node['seed']}")
         print()
 
     return 0

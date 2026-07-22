@@ -293,11 +293,11 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
 # ── Check 6: Git hook ──
 
 def _check_git_hook(vault):
-    hook = vault / ".git" / "hooks" / "post-commit"
+    hook = vault / ".git" / "hooks" / "pre-commit"
     if not hook.exists():
-        return False, "hook post-commit no existe"
+        return False, "hook pre-commit no existe"
     if not os.access(hook, os.X_OK):
-        return False, "hook post-commit no es ejecutable"
+        return False, "hook pre-commit no es ejecutable"
     return True, None
 
 
@@ -662,7 +662,7 @@ def run(args, vault, config=None):
         print(f"✅ Scripts: {total_scr}/{total_scr} funcionales")
 
     if hook_ok:
-        print("✅ Git hook: post-commit presente y ejecutable")
+        print("✅ Git hook: pre-commit presente y ejecutable")
     else:
         print(f"❌ Git hook: {hook_err}")
 

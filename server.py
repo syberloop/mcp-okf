@@ -346,7 +346,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
 
 
 @mcp.tool()
-def okf_traverse(slug: str, depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False) -> str:
+def okf_traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "") -> str:
     """Travesía semántica del grafo OKF. Devuelve frontmatter del concepto + vecindario (wikilinks, backlinks, cyber.corrects).
 
     USO PRIMARIO para consultar el vault. Preferir sobre okf_search.
@@ -357,15 +357,30 @@ def okf_traverse(slug: str, depth: int = 2, direction: str = "both", no_cyber: b
         direction: 'both' (default), 'out' (solo salientes), 'in' (solo entrantes)
         no_cyber: Si True, no sigue aristas cyber.corrects/corrected_by
         json_output: Si True, salida JSON para consumo programático
+        seeds: Slugs separados por coma para múltiples orígenes (unión + deduplicación).
+               Ej: 'frameworks/tp3-cibernetico,decisions/description-cibernetico-okf'
     """
-    args = ["traverse", slug, "--depth", str(depth)]
+    args = ["traverse"]
+    params = {"depth": depth, "direction": direction, "no_cyber": no_cyber}
+
+    if seeds:
+        seed_list = [s.strip() for s in seeds.split(",") if s.strip()]
+        args += ["--seeds"] + seed_list
+        params["seeds"] = seeds
+    elif slug:
+        args += [slug]
+        params["slug"] = slug
+    else:
+        return "[error] Debe especificar 'slug' o 'seeds'"
+
+    args += ["--depth", str(depth)]
     if direction in ("out", "in"):
         args += ["--direction", direction]
     if no_cyber:
         args.append("--no-cyber")
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_traverse", params={"slug": slug, "depth": depth, "direction": direction, "no_cyber": no_cyber})
+    return _run(args, tool_name="okf_traverse", params=params)
 
 
 @mcp.tool()
@@ -487,7 +502,7 @@ def okf_health(strict: bool = False, json_output: bool = False) -> str:
 def okf_index() -> str:
     """Regenera todos los index.md y log.md del vault OKF.
 
-    Normalmente ejecutado por el post-commit hook. Usar manualmente solo si
+    Normalmente ejecutado por el pre-commit hook. Usar manualmente solo si
     los índices están desactualizados y no se va a commitear inmediatamente.
     """
     return _run(["index"], tool_name="okf_index", params={})
@@ -980,6 +995,26 @@ def okf_file_info(slug: str, json_output: bool = False) -> str:
 
 
 @mcp.tool()
+@mcp.tool()
+def okf_trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
+    """Rastrea referencias a una query en todas las capas del ecosistema OKF.
+
+    Útil antes de eliminar, renomvar o modificar componentes del sistema
+    (hooks, scripts, tools, configs, paths). Responde: ¿dónde se menciona X?
+
+    Args:
+        query: Término a buscar (ej: 'post-commit', 'sistema/skills')
+        layers: Capas a rastrear separadas por coma (default: todas).
+                vault — wikilinks + contenido .md del vault
+                code  — Python del MCP server (~/.hermes/mcp-servers/okf/)
+                hooks — .git/hooks/*
+                cron  — sistema/cron/ + sistema/hermes-cron-jobs/
+                agents — AGENTS.md, CLAUDE.md, ~/.claude/CLAUDE.md
+    """
+    return _run(["trace", query, "--layers", layers], tool_name="okf_trace",
+                params={"query": query, "layers": layers})
+
+
 def okf_review() -> str:
     """Busca conceptos con cyber.review_on vencido y los reporta.
 

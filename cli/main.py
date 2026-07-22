@@ -83,7 +83,10 @@ def build_parser():
     # ── traverse ──
     sp_traverse = subparsers.add_parser("traverse",
                                         help="Travesía semántica del grafo")
-    sp_traverse.add_argument("target", type=str, help="Concepto origen")
+    sp_traverse.add_argument("target", type=str, nargs="?",
+                             help="Concepto origen (opcional si se usa --seeds)")
+    sp_traverse.add_argument("--seeds", type=str, nargs="+", default=None,
+                             help="Múltiples conceptos origen (unión + deduplicación)")
     sp_traverse.add_argument("--depth", type=int, default=1,
                              help="Profundidad de travesía (default: 1)")
     sp_traverse.add_argument("--direction", type=str, default="both",
@@ -136,6 +139,12 @@ def build_parser():
     sp_touch.add_argument("target", nargs="?", type=str, help="Concepto a incrementar")
     sp_touch.add_argument("--all", action="store_true", default=False,
                           help="Mostrar stats de todos los conceptos")
+
+    # ── trace ──
+    sp_trace = subparsers.add_parser("trace", help="Rastrear referencias en el ecosistema OKF")
+    sp_trace.add_argument("query", type=str, help="Término a buscar")
+    sp_trace.add_argument("--layers", type=str, default="vault,code,hooks,cron,agents",
+                          help="Capas a rastrear (default: todas)")
 
     # ── dashboard ──
     sp_dash = subparsers.add_parser("dashboard", help="Generar dashboard.md")
@@ -247,6 +256,9 @@ def main(argv=None):
 
     elif command == "touch":
         from cli.commands.touch import run
+        sys.exit(run(args, vault, config))
+    elif command == "trace":
+        from cli.commands.trace import run
         sys.exit(run(args, vault, config))
 
     elif command == "dashboard":

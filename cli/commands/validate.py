@@ -214,8 +214,8 @@ def _validate_file(filepath, vault):
     if not desc or not str(desc).strip():
         all_errors.append("falta 'description'")
     # timestamp: obligatorio excepto en sesiones/ (auto-generadas)
-    # y sistema/skills/ (skills de Hermes, no conceptos OKF)
-    if not rel.startswith("sesiones/") and not rel.startswith("sistema/skills/"):
+    # y skills/ (skills de Hermes, no conceptos OKF)
+    if not rel.startswith("sesiones/") and not rel.startswith("skills/"):
         ts = fm.get("timestamp")
         if not ts or not str(ts).strip():
             all_errors.append("falta 'timestamp'")
