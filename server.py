@@ -920,7 +920,8 @@ def okf_graph_command(action: str, nodes: str = "", tag: str = "",
             - 'highlight_path': resaltar ruta entre nodos (nodes: "A,B,C")
             - 'clear_highlights': limpiar todos los resaltados
             - 'reset_graph': volver al estado base
-        nodes: Lista de slugs separados por coma (para highlight_nodes, highlight_path)
+        nodes: Lista de slugs separados por coma (para highlight_nodes, highlight_path).
+               Para highlight_most_visited / highlight_least_visited: número de nodos a resaltar (default 10).
         tag: Tag para focus_cluster
         color: Color en hex (#RRGGBB, default #FF6B35 naranja)
         session_id: ID de sesión (para highlight_session)
@@ -946,6 +947,27 @@ def okf_graph_command(action: str, nodes: str = "", tag: str = "",
         command["color"] = color
     if session_id:
         command["session_id"] = session_id
+
+    # highlight_most_visited / highlight_least_visited: resolver nodos desde SQLite
+    if action in ("highlight_most_visited", "highlight_least_visited"):
+        try:
+            n_limit = int(nodes) if nodes else 10
+        except ValueError:
+            n_limit = 10
+        order = "DESC" if action == "highlight_most_visited" else "ASC"
+        try:
+            with sqlite3.connect(str(DB_PATH)) as conn:
+                rows = conn.execute(
+                    f"SELECT node FROM v_node_visits ORDER BY visits {order} LIMIT ?",
+                    (n_limit,),
+                ).fetchall()
+            resolved = [row[0] for row in rows if row[0]]
+            if resolved:
+                command["nodes"] = resolved
+            else:
+                return "(sin datos — no se han registrado traverses aún)"
+        except Exception as e:
+            return f"[error] No se pudieron resolver los nodos: {e}"
 
     # highlight_session: auto-resolver los nodos de la sesión desde SQLite
     if action == "highlight_session":

@@ -10,7 +10,7 @@ from pathlib import Path
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
     "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow", "Criterio",
-    "Sesion",
+    "Sesion", "Research",
 }
 
 # Types que califican para bloque cyber: — defaults
@@ -32,6 +32,7 @@ TYPE_DIR = {
     "Workflow": "workflows",
     "Criterio": "criterios",
     "Sesion": "sesiones",
+    "Research": "research",
 }
 
 BODY_TEMPLATES = {
