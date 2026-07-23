@@ -25,7 +25,8 @@ DEFAULTS: dict[str, Any] = {
     "types": {
         "valid": [
             "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
-            "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow", "Criterio", "Sesion",
+            "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow",
+            "Mapa", "Criterio", "Sesion",
             "Research",
         ],
         "cyber": ["Sistema", "Agente", "Decision", "Plan", "Project", "Insight"],
@@ -46,6 +47,7 @@ DEFAULTS: dict[str, Any] = {
             "Criterio": "criterios",
             "Sesion": "sesiones",
             "Research": "research",
+            "Mapa": "mapas",
         },
     },
     "stale": {
