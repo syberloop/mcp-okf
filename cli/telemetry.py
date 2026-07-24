@@ -259,6 +259,11 @@ def record(tool_name: str, params: dict, exit_code: int,
     if not _enabled:
         return
 
+    # Si viene del MCP server, el server ya escribe su propio evento.
+    # Saltamos para no duplicar cada tool call en el timeline.
+    if os.environ.get("OKF_MCP_CALLER") == "1":
+        return
+
     error = None
     if exit_code != 0 and stderr:
         error = stderr[:500]

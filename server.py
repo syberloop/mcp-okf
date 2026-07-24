@@ -310,7 +310,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             capture_output=True,
             text=True,
             timeout=timeout,
-            env={**os.environ, "PYTHONPATH": str(MCP_DIR)},
+            env={**os.environ, "PYTHONPATH": str(MCP_DIR), "OKF_MCP_CALLER": "1"},
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         output = result.stdout
