@@ -24,7 +24,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 VAULT = Path.home() / "OKF-Vault"
-MCP_DIR = Path(__file__).parent  # ~/.hermes/mcp-servers/okf
+MCP_DIR = Path(__file__).parent
 CLI = ["python3", "-m", "cli", "--vault", str(VAULT)]
 
 # Configuración externalizada (se carga al iniciar)
@@ -59,7 +59,7 @@ JSONL_LOCK = threading.Lock()
 # Máximo de result_nodes por evento (bound del tamaño de línea JSONL)
 RESULT_NODES_CAP = 150
 
-mcp = FastMCP("okf")
+mcp = FastMCP("cli")
 
 
 # ── Persistencia Cognitive Trace ────────────────────────────────────────────

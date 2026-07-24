@@ -1,11 +1,11 @@
-"""Configuración externalizada del MCP OKF.
+"""Configuración externalizada de MCP OKF.
 
 Resolución en cadena:
-    1. --config <path>           → argumento explícito del CLI
-    2. $OKF_CONFIG               → variable de entorno
-    3. <vault>/.okf.config.yaml  → junto al vault (95% de los casos)
+    1. --config <path>               → argumento explícito del CLI
+    2. $OKF_CONFIG             → variable de entorno
+    3. <vault>/.okf.config.yaml       → junto al vault (95% de los casos)
     4. ~/.config/okf/config.yaml → global del usuario
-    5. defaults embebidos        → réplica exacta de la configuración actual de Jaime
+    5. defaults embebidos            → réplica exacta de la configuración actual de Jaime
 
 Principio: hardcodear reglas fundamentales del dominio, configurar lo que cambia.
 El contrato core (type + description + wikilinks) ES regla fundamental → hardcodeado.
@@ -226,7 +226,7 @@ class Config:
             return vault_config
 
         # 4. Global del usuario
-        global_config = Path.home() / ".config" / "okf" / "config.yaml"
+        global_config = Path.home() / ".config" / "cli" / "config.yaml"
         if global_config.exists():
             return global_config
 
