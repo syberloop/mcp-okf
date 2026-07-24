@@ -205,7 +205,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
             else:
                 rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                        text=True, timeout=20,
-                                       env={**os.environ, "PYTHONPATH": str(MCP_DIR)})
+                                       env={**os.environ, "PYTHONPATH": str(MCP_DIR), "OKF_MCP_CALLER": "1"})
                 if rerun.returncode != 0:
                     return None
                 data = json.loads(rerun.stdout)
