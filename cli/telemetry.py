@@ -193,15 +193,19 @@ def _extract_nodes(tool_name: str, params: dict, stdout: str) -> list[str] | Non
                     slug += ".md"
                 nodes = [slug]
         elif tool_name == "okf_search":
+            # --todos / --all producen listas de tareas, no conceptos navegables
+            if params.get("todos") or params.get("all"):
+                return None
             if params.get("json"):
                 data = json.loads(stdout)
                 nodes = [item.get("file", "") for item in data]
             else:
-                # Output textual: 📁 directorio  — título
+                # Output textual: tabla con columna ARCHIVO (paths .md)
                 for line in stdout.splitlines():
-                    m = re.match(r"📁\s+(\S+)", line)
-                    if m:
-                        nodes.append(m.group(1))
+                    for tok in line.split():
+                        if tok.endswith(".md"):
+                            nodes.append(tok)
+                            break
         elif tool_name == "okf_stale":
             if params.get("json"):
                 data = json.loads(stdout)
