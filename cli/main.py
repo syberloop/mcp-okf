@@ -22,6 +22,7 @@ Comandos:
 import argparse
 import sys
 import os
+import time
 from pathlib import Path
 
 
@@ -146,6 +147,20 @@ def build_parser():
     sp_trace.add_argument("--layers", type=str, default="vault,code,hooks,cron,agents",
                           help="Capas a rastrear (default: todas)")
 
+    # ── analytics ──
+    sp_analytics = subparsers.add_parser("analytics", help="Consultas analíticas sobre Cognitive Trace")
+    sp_analytics.add_argument("--query", type=str, default="most_visited",
+                              help="Tipo de consulta (most_visited, session_heatmap, tool_usage, "
+                                   "daily_activity, node_timeline, error_summary, co_visited, "
+                                   "read_ratio, session_diff, depth_stats, entry_points, prompts)")
+    sp_analytics.add_argument("--limit", type=int, default=10,
+                              help="Límite de resultados (default 10)")
+    sp_analytics.add_argument("--arg", type=str, default="",
+                              help="Argumento adicional (slug para node_timeline/co_visited, "
+                                   "'sessionA,sessionB' para session_diff)")
+    sp_analytics.add_argument("--session-id", type=str, default="",
+                              help="Filtrar por sesión (vacío = actual vía $OKF_SESSION_ID)")
+
     # ── dashboard ──
     sp_dash = subparsers.add_parser("dashboard", help="Generar dashboard.md")
 
@@ -223,76 +238,110 @@ def main(argv=None):
     if str(cli_dir.parent) not in sys.path:
         sys.path.insert(0, str(cli_dir.parent))
 
-    # Despachar al comando
+    # Inicializar telemetría Cognitive Trace
+    from cli.telemetry import init as telemetry_init, record as telemetry_record
+    telemetry_init(vault, config)
+
+    # Extraer params del namespace para telemetría (sin campos internos)
+    _params = {k: v for k, v in vars(args).items()
+               if k not in ("vault", "config", "command", "func") and v is not None
+               and v != False and v != ""}
+
+    # Despachar al comando con captura de stdout/stderr para telemetría
+    import io as _io
     command = args.command
+    _t0 = time.monotonic()
+    _exit = 1
+    _stdout_buf = _io.StringIO()
+    _stderr_buf = _io.StringIO()
+    _old_stdout, _old_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _stdout_buf, _stderr_buf
 
-    if command == "search":
-        from cli.commands.search import run
-        sys.exit(run(args, vault, config))
+    try:
+        if command == "search":
+            from cli.commands.search import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "read":
-        from cli.commands.read import run
-        sys.exit(run(args, vault, config))
+        elif command == "read":
+            from cli.commands.read import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "traverse":
-        from cli.commands.traverse import run
-        sys.exit(run(args, vault, config))
+        elif command == "traverse":
+            from cli.commands.traverse import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "graph":
-        from cli.commands.graph import run
-        sys.exit(run(args, vault, config))
+        elif command == "graph":
+            from cli.commands.graph import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "health":
-        from cli.commands.health import run
-        sys.exit(run(args, vault, config))
+        elif command == "health":
+            from cli.commands.health import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "index":
-        from cli.commands.index import run
-        sys.exit(run(args, vault, config))
+        elif command == "index":
+            from cli.commands.index import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "new":
-        from cli.commands.new import run
-        sys.exit(run(args, vault, config))
+        elif command == "new":
+            from cli.commands.new import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "touch":
-        from cli.commands.touch import run
-        sys.exit(run(args, vault, config))
-    elif command == "trace":
-        from cli.commands.trace import run
-        sys.exit(run(args, vault, config))
+        elif command == "touch":
+            from cli.commands.touch import run
+            _exit = run(args, vault, config) or 0
+        elif command == "trace":
+            from cli.commands.trace import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "dashboard":
-        from cli.commands.dashboard import run
-        sys.exit(run(args, vault, config))
+        elif command == "analytics":
+            from cli.commands.analytics import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "stale":
-        from cli.commands.stale import run
-        sys.exit(run(args, vault, config))
+        elif command == "dashboard":
+            from cli.commands.dashboard import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "session-metrics":
-        from cli.commands.session_metrics import run
-        sys.exit(run(args, vault, config))
+        elif command == "stale":
+            from cli.commands.stale import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "review":
-        from cli.commands.review import run
-        sys.exit(run(args, vault, config))
+        elif command == "session-metrics":
+            from cli.commands.session_metrics import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "audit":
-        from cli.commands.audit import run
-        sys.exit(run(args, vault, config))
+        elif command == "review":
+            from cli.commands.review import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "validate":
-        from cli.commands.validate import run
-        sys.exit(run(args, vault, config))
+        elif command == "audit":
+            from cli.commands.audit import run
+            _exit = run(args, vault, config) or 0
 
-    elif command == "file-info":
-        from cli.commands.file_info import run
-        sys.exit(run(args, vault, config))
+        elif command == "validate":
+            from cli.commands.validate import run
+            _exit = run(args, vault, config) or 0
 
-    else:
-        print(f"Comando desconocido: {command}", file=sys.stderr)
-        parser.print_help()
-        sys.exit(1)
+        elif command == "file-info":
+            from cli.commands.file_info import run
+            _exit = run(args, vault, config) or 0
+
+        else:
+            print(f"Comando desconocido: {command}", file=sys.stderr)
+            parser.print_help()
+            sys.exit(1)
+    finally:
+        sys.stdout, sys.stderr = _old_stdout, _old_stderr
+        _captured_out = _stdout_buf.getvalue()
+        _captured_err = _stderr_buf.getvalue()
+        # Re-emitir output a stdout/stderr real
+        if _captured_out:
+            _old_stdout.write(_captured_out)
+        if _captured_err:
+            _old_stderr.write(_captured_err)
+        _duration_ms = int((time.monotonic() - _t0) * 1000)
+        telemetry_record(f"okf_{command}", _params, _exit, _duration_ms, _captured_out, _captured_err)
+
+    sys.exit(_exit)
 
 
 if __name__ == "__main__":
