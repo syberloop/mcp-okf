@@ -120,7 +120,7 @@ def _init_db() -> None:
                 COUNT(*) as visits,
                 MAX(ts) as last_visit
             FROM events
-            WHERE tool = 'okf_traverse'
+            WHERE tool = 'traverse'
               AND json_extract(params, '$.slug') IS NOT NULL
             GROUP BY node
             ORDER BY visits DESC;
@@ -172,7 +172,7 @@ def _append_jsonl(event: dict) -> None:
 
 
 def _extract_created_path(result: "subprocess.CompletedProcess") -> str | None:
-    """Extrae el path relativo del archivo creado por okf_new."""
+    """Extrae el path relativo del archivo creado por new."""
     if result.returncode != 0:
         return None
     for line in (result.stdout or "").splitlines():
@@ -199,7 +199,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
         return None
     try:
         nodes: list[str] = []
-        if tool_name == "okf_traverse":
+        if tool_name == "traverse":
             if "--json" in args:
                 data = json.loads(result.stdout)
             else:
@@ -210,7 +210,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
                     return None
                 data = json.loads(rerun.stdout)
             nodes = [n.get("path", "") for n in data.get("nodes", [])]
-        elif tool_name == "okf_search":
+        elif tool_name == "search":
             if "--json" in args:
                 data = json.loads(result.stdout)
                 nodes = [item.get("file", "") for item in data]
@@ -220,9 +220,9 @@ def _extract_result_nodes(tool_name: str, args: list[str],
                         if tok.endswith(".md"):
                             nodes.append(tok)
                             break
-        elif tool_name == "okf_graph":
+        elif tool_name == "graph":
             nodes = _parse_graph_output(result.stdout, args)
-        elif tool_name == "okf_stale":
+        elif tool_name == "stale":
             if result.returncode != 0:
                 return None
             if "--json" in args:
@@ -234,7 +234,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
                     m = re.match(r"\s+📄\s+\[(\w+)\]\s+(\S+)", line)
                     if m:
                         nodes.append(m.group(2))
-        elif tool_name == "okf_analytics":
+        elif tool_name == "analytics":
             # most_visited, least_visited, session_heatmap devuelven líneas
             # "  slug — N visitas (...)". Extraer slugs.
             nodes = []
@@ -251,9 +251,9 @@ def _extract_result_nodes(tool_name: str, args: list[str],
 
 
 def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
-    """Extrae paths de nodos del output textual de okf_graph.
+    """Extrae paths de nodos del output textual de graph.
 
-    okf_graph no tiene flag --json. Los comandos que devuelven listas
+    graph no tiene flag --json. Los comandos que devuelven listas
     concretas de archivos (hubs, backlinks, deps, orphans, cluster, dump)
     usan formatos con paths terminados en .md. Comandos de agregación
     (stats, tags, bridges) no producen listas de nodos → se ignoran.
@@ -274,7 +274,7 @@ def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
 def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedProcess",
                   duration_ms: int, args: list[str]) -> None:
     """Extrae result_nodes y persiste el evento a SQLite + JSONL."""
-    if tool_name == "okf_new":
+    if tool_name == "new":
         created_path = _extract_created_path(result)
         if created_path:
             params = {**params, "created_path": created_path}
@@ -346,10 +346,10 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
 
 
 @mcp.tool()
-def okf_traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "") -> str:
+def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "") -> str:
     """Travesía semántica del grafo OKF. Devuelve frontmatter del concepto + vecindario (wikilinks, backlinks, cyber.corrects).
 
-    USO PRIMARIO para consultar el vault. Preferir sobre okf_search.
+    USO PRIMARIO para consultar el vault. Preferir sobre search.
 
     Args:
         slug: Slug del concepto (ej: 'grafo-cibernetico-marco-teorico' o 'frameworks/tp3-cibernetico')
@@ -380,12 +380,12 @@ def okf_traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyb
         args.append("--no-cyber")
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_traverse", params=params)
+    return _run(args, tool_name="traverse", params=params)
 
 
 @mcp.tool()
-def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "") -> str:
-    """Búsqueda FTS5 en el vault OKF. FALLBACK — preferir okf_traverse o lectura de índices.
+def search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "") -> str:
+    """Búsqueda FTS5 en el vault OKF. FALLBACK — preferir traverse o lectura de índices.
 
     Usar solo cuando:
     - La travesía no encuentra ruta en ≤6 hops
@@ -423,7 +423,7 @@ def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: s
         args += ["--since", since]
     if until:
         args += ["--until", until]
-    return _run(args, tool_name="okf_search", params={
+    return _run(args, tool_name="search", params={
         "query": query, "type": type, "status": status,
         "cyber_field": cyber_field, "cyber_value": cyber_value,
         "todos": todos, "json_output": json_output,
@@ -432,10 +432,10 @@ def okf_search(query: str = "", type: str = "", status: str = "", cyber_field: s
 
 
 @mcp.tool()
-def okf_read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = False) -> str:
+def read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = False) -> str:
     """Lee un concepto del vault OKF e incrementa su contador de reads.
 
-    Usar para leer el body completo de un concepto después de que okf_traverse
+    Usar para leer el body completo de un concepto después de que traverse
     confirme su relevancia. NUNCA usar read_file del sistema sobre archivos .md del vault.
 
     Args:
@@ -447,13 +447,13 @@ def okf_read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = Fals
     args = ["read", slug, "--offset", str(offset), "--limit", str(limit)]
     if no_touch:
         args.append("--no-touch")
-    return _run(args, tool_name="okf_read", params={
+    return _run(args, tool_name="read", params={
         "slug": slug, "offset": offset, "limit": limit, "no_touch": no_touch,
     })
 
 
 @mcp.tool()
-def okf_graph(command: str, arg: str = "") -> str:
+def graph(command: str, arg: str = "") -> str:
     """Analiza el grafo de wikilinks y tags del vault OKF.
 
     Útil para preguntas sobre relaciones, dependencias, estructura o agrupación temática.
@@ -476,11 +476,11 @@ def okf_graph(command: str, arg: str = "") -> str:
     args = ["graph", command]
     if arg:
         args.append(arg)
-    return _run(args, tool_name="okf_graph", params={"command": command, "arg": arg})
+    return _run(args, tool_name="graph", params={"command": command, "arg": arg})
 
 
 @mcp.tool()
-def okf_health(strict: bool = False, json_output: bool = False) -> str:
+def health(strict: bool = False, json_output: bool = False) -> str:
     """Chequeo completo de salud del vault OKF (8 verificaciones).
 
     Verifica: frontmatter, índices, grafo (huérfanos, densidad), links rotos,
@@ -495,21 +495,21 @@ def okf_health(strict: bool = False, json_output: bool = False) -> str:
         args.append("--strict")
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_health", params={"strict": strict, "json_output": json_output})
+    return _run(args, tool_name="health", params={"strict": strict, "json_output": json_output})
 
 
 @mcp.tool()
-def okf_index() -> str:
+def index() -> str:
     """Regenera todos los index.md y log.md del vault OKF.
 
     Normalmente ejecutado por el pre-commit hook. Usar manualmente solo si
     los índices están desactualizados y no se va a commitear inmediatamente.
     """
-    return _run(["index"], tool_name="okf_index", params={})
+    return _run(["index"], tool_name="index", params={})
 
 
 @mcp.tool()
-def okf_touch(all: bool = True) -> str:
+def touch(all: bool = True) -> str:
     """Estadísticas de lecturas (reads) del vault OKF.
 
     Args:
@@ -518,11 +518,11 @@ def okf_touch(all: bool = True) -> str:
     args = ["touch"]
     if all:
         args.append("--all")
-    return _run(args, tool_name="okf_touch", params={})
+    return _run(args, tool_name="touch", params={})
 
 
 @mcp.tool()
-def okf_session_metrics(json_output: bool = False) -> str:
+def session_metrics(json_output: bool = False) -> str:
     """Métricas agregadas de todas las sesiones del vault.
 
     Extrae métricas de la sección ## Métricas de cada resumen de sesión:
@@ -535,11 +535,11 @@ def okf_session_metrics(json_output: bool = False) -> str:
     args = ["session-metrics"]
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_session_metrics", params={"json_output": json_output})
+    return _run(args, tool_name="session_metrics", params={"json_output": json_output})
 
 
 @mcp.tool()
-def okf_stale(json_output: bool = False) -> str:
+def stale(json_output: bool = False) -> str:
     """Detector de obsolescencia semántica del vault OKF.
 
     Evalúa 7 señales (timestamp, reads, propuesta fantasma, huérfanos,
@@ -555,11 +555,11 @@ def okf_stale(json_output: bool = False) -> str:
     args = ["stale"]
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_stale", params={"json_output": json_output})
+    return _run(args, tool_name="stale", params={"json_output": json_output})
 
 
 @mcp.tool()
-def okf_new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "") -> str:
+def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "") -> str:
     """Crea un concepto nuevo en el vault OKF con frontmatter consistente.
 
     Usar SIEMPRE en vez de write_file para crear conceptos.
@@ -585,7 +585,7 @@ def okf_new(type: str, title: str, description: str, tags: str = "", status: str
         args.append("--dry-run")
     if body:
         args += ["--body", body]
-    return _run(args, tool_name="okf_new", params={
+    return _run(args, tool_name="new", params={
         "type": type, "title": title, "description": description,
         "tags": tags, "status": status, "cyber": cyber, "dry_run": dry_run,
         "body": body[:100] + "..." if len(body) > 100 else body,
@@ -599,13 +599,13 @@ def _persist_analytics(query: str, text: str) -> None:
     result = subprocess.CompletedProcess(args=[], returncode=0, stdout=text, stderr="")
     # Pasar por _extract_result_nodes vía _finish_event, que escribe JSONL+SQLite.
     # Como no hay subprocess real, el duration_ms es 0.
-    nodes = _extract_result_nodes("okf_analytics", [query], result)
-    _persist_event("okf_analytics", {"query": query}, result, 0,
+    nodes = _extract_result_nodes("analytics", [query], result)
+    _persist_event("analytics", {"query": query}, result, 0,
                    nodes_count=len(nodes) if nodes else None)
     event = {
         "type": "tool", "session": _get_session_id(),
         "ts": datetime.now(timezone.utc).isoformat(),
-        "tool": "okf_analytics", "params": {"query": query},
+        "tool": "analytics", "params": {"query": query},
         "exit_code": 0, "duration_ms": 0,
     }
     if nodes:
@@ -614,7 +614,7 @@ def _persist_analytics(query: str, text: str) -> None:
 
 
 @mcp.tool()
-def okf_analytics(query: str = "most_visited", limit: int = 10,
+def analytics(query: str = "most_visited", limit: int = 10,
                   arg: str = "", session_id: str = "") -> str:
     """Consulta analítica sobre eventos de trace del vault OKF.
 
@@ -671,7 +671,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                 rows = conn.execute(
                     """SELECT json_extract(params, '$.slug') as node, COUNT(*) as visits
                        FROM events
-                       WHERE tool = 'okf_traverse' AND session_id = ?
+                       WHERE tool = 'traverse' AND session_id = ?
                          AND json_extract(params, '$.slug') IS NOT NULL
                        GROUP BY node ORDER BY visits DESC LIMIT ?""",
                     (sid, limit),
@@ -753,7 +753,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                                   COUNT(DISTINCT e2.session_id) as cnt
                            FROM events e1 JOIN events e2 ON e1.session_id = e2.session_id
                            WHERE json_extract(e1.params, '$.slug') = ?
-                             AND e2.tool = 'okf_traverse'
+                             AND e2.tool = 'traverse'
                              AND json_extract(e2.params, '$.slug') IS NOT NULL
                              AND json_extract(e2.params, '$.slug') != ?
                            GROUP BY co_node ORDER BY cnt DESC LIMIT ?""",
@@ -772,7 +772,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                 rows = conn.execute(
                     """SELECT node, visits,
                               (SELECT COUNT(*) FROM events
-                               WHERE tool = 'okf_read'
+                               WHERE tool = 'read'
                                  AND json_extract(params, '$.slug') = v.node) as reads
                        FROM v_node_visits v
                        WHERE visits >= 2
@@ -797,11 +797,11 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                     sid_a, sid_b = parts[0].strip(), parts[1].strip()
                     rows = conn.execute(
                         """SELECT DISTINCT json_extract(params, '$.slug') as node
-                           FROM events WHERE session_id = ? AND tool = 'okf_traverse'
+                           FROM events WHERE session_id = ? AND tool = 'traverse'
                              AND json_extract(params, '$.slug') IS NOT NULL
                              AND json_extract(params, '$.slug') NOT IN (
                                SELECT DISTINCT json_extract(params, '$.slug')
-                               FROM events WHERE session_id = ? AND tool = 'okf_traverse')
+                               FROM events WHERE session_id = ? AND tool = 'traverse')
                            LIMIT ?""",
                         (sid_a, sid_b, limit),
                     ).fetchall()
@@ -818,12 +818,12 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
                 rows = conn.execute(
                     """SELECT CAST(json_extract(params, '$.depth') AS INT) as depth,
                                COUNT(*) as cnt
-                       FROM events WHERE tool = 'okf_traverse'
+                       FROM events WHERE tool = 'traverse'
                          AND json_extract(params, '$.depth') IS NOT NULL
                        GROUP BY depth ORDER BY depth"""
                 ).fetchall()
                 avg_row = conn.execute(
-                    "SELECT AVG(CAST(json_extract(params, '$.depth') AS FLOAT)) as avg_depth FROM events WHERE tool = 'okf_traverse'"
+                    "SELECT AVG(CAST(json_extract(params, '$.depth') AS FLOAT)) as avg_depth FROM events WHERE tool = 'traverse'"
                 ).fetchone()
                 if not rows:
                     result = "(sin datos de profundidad)"
@@ -884,7 +884,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
             elif query == "entry_points":
                 rows = conn.execute(
                     """SELECT json_extract(params, '$.slug') as entry, COUNT(*) as cnt
-                       FROM events WHERE tool = 'okf_traverse'
+                       FROM events WHERE tool = 'traverse'
                          AND json_extract(params, '$.slug') IS NOT NULL
                        GROUP BY entry ORDER BY cnt DESC LIMIT ?""",
                     (limit,),
@@ -906,7 +906,7 @@ def okf_analytics(query: str = "most_visited", limit: int = 10,
 
 
 @mcp.tool()
-def okf_graph_command(action: str, nodes: str = "", tag: str = "",
+def graph_command(action: str, nodes: str = "", tag: str = "",
                       color: str = "#FF6B35", session_id: str = "") -> str:
     """Envía un comando al plugin Cognitive Trace en Obsidian vía JSONL.
 
@@ -976,7 +976,7 @@ def okf_graph_command(action: str, nodes: str = "", tag: str = "",
             with sqlite3.connect(str(DB_PATH)) as conn:
                 rows = conn.execute(
                     """SELECT DISTINCT json_extract(params, '$.slug') as node
-                       FROM events WHERE session_id = ? AND tool = 'okf_traverse'
+                       FROM events WHERE session_id = ? AND tool = 'traverse'
                          AND json_extract(params, '$.slug') IS NOT NULL""",
                     (sid,),
                 ).fetchall()
@@ -997,7 +997,7 @@ def okf_graph_command(action: str, nodes: str = "", tag: str = "",
 
 
 @mcp.tool()
-def okf_file_info(slug: str, json_output: bool = False) -> str:
+def file_info(slug: str, json_output: bool = False) -> str:
     """Metadatos de fecha de un concepto del vault OKF.
 
     Devuelve:
@@ -1013,12 +1013,12 @@ def okf_file_info(slug: str, json_output: bool = False) -> str:
     args = ["file-info", "--slug", slug]
     if json_output:
         args.append("--json")
-    return _run(args, tool_name="okf_file_info", params={"slug": slug, "json_output": json_output})
+    return _run(args, tool_name="file_info", params={"slug": slug, "json_output": json_output})
 
 
 @mcp.tool()
 @mcp.tool()
-def okf_trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
+def trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
     """Rastrea referencias a una query en todas las capas del ecosistema OKF.
 
     Útil antes de eliminar, renomvar o modificar componentes del sistema
@@ -1033,18 +1033,18 @@ def okf_trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
                 cron  — sistema/cron/ + sistema/hermes-cron-jobs/
                 agents — AGENTS.md, CLAUDE.md, ~/.claude/CLAUDE.md
     """
-    return _run(["trace", query, "--layers", layers], tool_name="okf_trace",
+    return _run(["trace", query, "--layers", layers], tool_name="trace",
                 params={"query": query, "layers": layers})
 
 
-def okf_review() -> str:
+def review() -> str:
     """Busca conceptos con cyber.review_on vencido y los reporta.
 
     Ejecuta 'python3 -m cli review' que escanea TODAS las fechas review_on
-    del vault, sin filtrar por outcome. Más exhaustivo que okf_search
+    del vault, sin filtrar por outcome. Más exhaustivo que search
     porque detecta vencidos con cualquier outcome (pending, success, failure).
     """
-    return _run(["review"], tool_name="okf_review")
+    return _run(["review"], tool_name="review")
 
 
 # Inicializar DB al cargar el módulo
