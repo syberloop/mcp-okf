@@ -1,0 +1,359 @@
+"""Comando analytics — Consultas analíticas sobre eventos de Cognitive Trace.
+
+Consulta la base SQLite de eventos del vault OKF para extraer patrones
+de uso, navegación y herramientas.
+
+Queries disponibles:
+  most_visited       — nodos más visitados (top N por traverses)
+  least_visited      — nodos con menos visitas
+  session_heatmap    — nodos más activos en la sesión actual (o --session-id)
+  tool_usage         — distribución de tools usadas
+  daily_activity     — actividad por día (eventos y sesiones)
+  node_timeline      — historial de visitas para un nodo (requiere --arg)
+  error_summary      — tools con errores
+  co_visited         — nodos visitados junto con --arg en una misma sesión
+  read_ratio         — proporción de reads vs traverses por nodo
+  session_diff       — nodos en sesión A que no están en B (--arg "A,B")
+  depth_stats        — distribución de profundidad de traverse
+  entry_points       — nodos más usados como entrada de traverse
+  prompts            — auto-segmentación de la sesión en prompts por gaps
+"""
+
+import sqlite3
+import sys
+from pathlib import Path
+
+
+# ── Helpers ──
+
+def _resolve_db_path(config) -> Path:
+    """Resuelve la ruta a la DB de Cognitive Trace desde config o default."""
+    if config:
+        db_path = config._data.get("features", {}).get("trace_db_path")
+        if db_path:
+            return Path(db_path).expanduser()
+    return Path.home() / ".hermes" / "cognitive-trace.db"
+
+
+def _get_session_id() -> str:
+    """Intenta inferir el session_id actual desde el entorno."""
+    import os
+    sid = os.environ.get("OKF_SESSION_ID", "")
+    if not sid:
+        sid = os.environ.get("CLAUDE_SESSION_ID", "")
+    return sid
+
+
+# ── Query handlers ──
+
+def _query_most_visited(conn, limit):
+    rows = conn.execute(
+        "SELECT node, visits, last_visit FROM v_node_visits ORDER BY visits DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "(sin datos — no se han registrado traverses aún)"
+    lines = [f"Top {len(rows)} nodos más visitados:"]
+    for r in rows:
+        lines.append(f"  {r['node']} — {r['visits']} visitas (última: {r['last_visit'][:10]})")
+    return "\n".join(lines)
+
+
+def _query_least_visited(conn, limit):
+    rows = conn.execute(
+        "SELECT node, visits, last_visit FROM v_node_visits ORDER BY visits ASC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "(sin datos)"
+    lines = [f"Top {len(rows)} nodos menos visitados:"]
+    for r in rows:
+        lines.append(f"  {r['node']} — {r['visits']} visitas (última: {r['last_visit'][:10]})")
+    return "\n".join(lines)
+
+
+def _query_session_heatmap(conn, limit, session_id):
+    sid = session_id or _get_session_id()
+    if not sid:
+        return "[error] Sin session_id. Usá --session-id o seteá OKF_SESSION_ID."
+    rows = conn.execute(
+        """SELECT json_extract(params, '$.slug') as node, COUNT(*) as visits
+           FROM events
+           WHERE tool = 'traverse' AND session_id = ?
+             AND json_extract(params, '$.slug') IS NOT NULL
+           GROUP BY node ORDER BY visits DESC LIMIT ?""",
+        (sid, limit),
+    ).fetchall()
+    if not rows:
+        return f"(sin datos para sesión {sid})"
+    lines = [f"Nodos más activos en sesión {sid[:20]}...:"]
+    for r in rows:
+        lines.append(f"  {r['node']} — {r['visits']} visitas")
+    return "\n".join(lines)
+
+
+def _query_tool_usage(conn, limit):
+    rows = conn.execute(
+        "SELECT tool, COUNT(*) as cnt, AVG(duration_ms) as avg_ms "
+        "FROM events GROUP BY tool ORDER BY cnt DESC"
+    ).fetchall()
+    if not rows:
+        return "(sin datos)"
+    lines = ["Distribución de tools:"]
+    for r in rows:
+        lines.append(f"  {r['tool']}: {r['cnt']} llamadas (promedio {r['avg_ms']:.0f}ms)")
+    return "\n".join(lines)
+
+
+def _query_daily_activity(conn, limit):
+    rows = conn.execute(
+        """SELECT date(ts) as day, COUNT(*) as events,
+                  COUNT(DISTINCT session_id) as sessions
+           FROM events GROUP BY day ORDER BY day DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "(sin datos)"
+    lines = ["Actividad por día:"]
+    for r in rows:
+        lines.append(f"  {r['day']}: {r['events']} eventos, {r['sessions']} sesiones")
+    return "\n".join(lines)
+
+
+def _query_node_timeline(conn, limit, arg):
+    if not arg:
+        return "[error] Requiere --arg <slug> para node_timeline"
+    rows = conn.execute(
+        """SELECT ts, tool FROM events
+           WHERE json_extract(params, '$.slug') = ?
+           ORDER BY ts DESC LIMIT ?""",
+        (arg, limit),
+    ).fetchall()
+    if not rows:
+        return f"(sin datos para '{arg}')"
+    lines = [f"Historial de '{arg}':"]
+    for r in rows:
+        lines.append(f"  {r['ts'][:19]} — {r['tool']}")
+    return "\n".join(lines)
+
+
+def _query_error_summary(conn, limit):
+    rows = conn.execute(
+        "SELECT tool, COUNT(*) as cnt FROM events WHERE exit_code != 0 "
+        "GROUP BY tool ORDER BY cnt DESC"
+    ).fetchall()
+    if not rows:
+        return "Sin errores registrados."
+    lines = ["Tools con errores:"]
+    for r in rows:
+        lines.append(f"  {r['tool']}: {r['cnt']} errores")
+    return "\n".join(lines)
+
+
+def _query_co_visited(conn, limit, arg):
+    if not arg:
+        return "[error] Requiere --arg <slug> para co_visited"
+    rows = conn.execute(
+        """SELECT json_extract(e2.params, '$.slug') as co_node,
+                  COUNT(DISTINCT e2.session_id) as cnt
+           FROM events e1 JOIN events e2 ON e1.session_id = e2.session_id
+           WHERE json_extract(e1.params, '$.slug') = ?
+             AND e2.tool = 'traverse'
+             AND json_extract(e2.params, '$.slug') IS NOT NULL
+             AND json_extract(e2.params, '$.slug') != ?
+           GROUP BY co_node ORDER BY cnt DESC LIMIT ?""",
+        (arg, arg, limit),
+    ).fetchall()
+    if not rows:
+        return f"Ningún nodo co-visitado con '{arg}' en la misma sesión."
+    lines = [f"Nodos visitados junto con '{arg}' en una misma sesión:"]
+    for r in rows:
+        lines.append(f"  {r['co_node']} — {r['cnt']} sesiones compartidas")
+    return "\n".join(lines)
+
+
+def _query_read_ratio(conn, limit):
+    rows = conn.execute(
+        """SELECT node, visits,
+                  (SELECT COUNT(*) FROM events
+                   WHERE tool = 'read'
+                     AND json_extract(params, '$.slug') = v.node) as reads
+           FROM v_node_visits v
+           WHERE visits >= 2
+           ORDER BY CAST(reads AS FLOAT) / visits ASC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "(sin datos — se necesitan traverses y reads)"
+    lines = ["Nodos con menor ratio de lectura (vistos pero no leídos):"]
+    for r in rows:
+        ratio = (r['reads'] / r['visits'] * 100) if r['visits'] else 0
+        lines.append(f"  {r['node']} — {r['reads']} reads / {r['visits']} traverses = {ratio:.0f}%")
+    return "\n".join(lines)
+
+
+def _query_session_diff(conn, limit, arg):
+    if not arg or "," not in arg:
+        return "[error] Requiere --arg 'sessionA,sessionB' para session_diff"
+    parts = arg.split(",", 1)
+    sid_a, sid_b = parts[0].strip(), parts[1].strip()
+    rows = conn.execute(
+        """SELECT DISTINCT json_extract(params, '$.slug') as node
+           FROM events WHERE session_id = ? AND tool = 'traverse'
+             AND json_extract(params, '$.slug') IS NOT NULL
+             AND json_extract(params, '$.slug') NOT IN (
+               SELECT DISTINCT json_extract(params, '$.slug')
+               FROM events WHERE session_id = ? AND tool = 'traverse')
+           LIMIT ?""",
+        (sid_a, sid_b, limit),
+    ).fetchall()
+    if not rows:
+        return "La sesión A no tiene nodos exclusivos (o todos están también en B)."
+    lines = [f"Nodos en sesión A ({sid_a[:20]}...) que NO están en B ({sid_b[:20]}...):"]
+    for r in rows:
+        lines.append(f"  {r['node']}")
+    return "\n".join(lines)
+
+
+def _query_depth_stats(conn, limit):
+    rows = conn.execute(
+        """SELECT CAST(json_extract(params, '$.depth') AS INT) as depth,
+                   COUNT(*) as cnt
+           FROM events WHERE tool = 'traverse'
+             AND json_extract(params, '$.depth') IS NOT NULL
+           GROUP BY depth ORDER BY depth"""
+    ).fetchall()
+    avg_row = conn.execute(
+        "SELECT AVG(CAST(json_extract(params, '$.depth') AS FLOAT)) as avg_depth "
+        "FROM events WHERE tool = 'traverse'"
+    ).fetchone()
+    if not rows:
+        return "(sin datos de profundidad)"
+    lines = ["Distribución de profundidad de traverse:"]
+    for r in rows:
+        bar = "█" * min(r['cnt'], 50)  # cap bar width
+        lines.append(f"  depth={r['depth']}: {r['cnt']} traverses {bar}")
+    if avg_row and avg_row['avg_depth']:
+        lines.append(f"  Profundidad promedio: {avg_row['avg_depth']:.1f}")
+    return "\n".join(lines)
+
+
+def _query_entry_points(conn, limit):
+    rows = conn.execute(
+        """SELECT json_extract(params, '$.slug') as entry, COUNT(*) as cnt
+           FROM events WHERE tool = 'traverse'
+             AND json_extract(params, '$.slug') IS NOT NULL
+           GROUP BY entry ORDER BY cnt DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "(sin datos)"
+    lines = [f"Top {len(rows)} puntos de entrada de traverse:"]
+    for r in rows:
+        lines.append(f"  {r['entry']} — {r['cnt']} traverses")
+    return "\n".join(lines)
+
+
+def _query_prompts(conn, limit, arg):
+    threshold = int(arg) if arg and arg.isdigit() else 60
+    rows = conn.execute(
+        """WITH ordered AS (
+             SELECT ts, tool,
+                    LAG(ts) OVER (ORDER BY ts) as prev_ts
+             FROM events
+           ),
+           breaks AS (
+             SELECT ts, tool,
+                    CASE WHEN prev_ts IS NULL
+                         OR (strftime('%s', ts) - strftime('%s', prev_ts)) > ?
+                         THEN 1 ELSE 0 END as is_new
+             FROM ordered
+           ),
+           segmented AS (
+             SELECT ts, tool,
+                    SUM(is_new) OVER (ORDER BY ts ROWS UNBOUNDED PRECEDING) as prompt_id
+             FROM breaks
+           )
+           SELECT prompt_id,
+                  MIN(ts) as start_ts, MAX(ts) as end_ts,
+                  COUNT(*) as events,
+                  (SELECT tool FROM segmented s2 WHERE s2.prompt_id = s1.prompt_id ORDER BY ts LIMIT 1) as first_tool,
+                  (SELECT tool FROM segmented s2 WHERE s2.prompt_id = s1.prompt_id ORDER BY ts DESC LIMIT 1) as last_tool
+           FROM segmented s1
+           GROUP BY prompt_id ORDER BY prompt_id DESC LIMIT ?""",
+        (threshold, limit),
+    ).fetchall()
+    if not rows:
+        return "(sin datos)"
+    lines = [f"Prompts detectados (gap > {threshold}s entre eventos):"]
+    for r in rows:
+        tools = f"{r['first_tool']} → {r['last_tool']}"
+        start = r['start_ts'][:19] if r['start_ts'] else "?"
+        lines.append(f"  prompt #{r['prompt_id']}: {start} — {r['events']} eventos ({tools})")
+    lines.append(f"Usá --arg=N para cambiar el umbral (default {threshold}s).")
+    return "\n".join(lines)
+
+
+# ── Dispatch ──
+
+QUERIES = {
+    "most_visited": _query_most_visited,
+    "least_visited": _query_least_visited,
+    "session_heatmap": _query_session_heatmap,
+    "tool_usage": _query_tool_usage,
+    "daily_activity": _query_daily_activity,
+    "node_timeline": _query_node_timeline,
+    "error_summary": _query_error_summary,
+    "co_visited": _query_co_visited,
+    "read_ratio": _query_read_ratio,
+    "session_diff": _query_session_diff,
+    "depth_stats": _query_depth_stats,
+    "entry_points": _query_entry_points,
+    "prompts": _query_prompts,
+}
+
+VALID_QUERIES = ", ".join(sorted(QUERIES.keys()))
+
+
+def run(args, vault, config=None):
+    """Ejecuta una consulta analítica sobre los eventos de Cognitive Trace.
+
+    Args:
+        args: argparse.Namespace con query, limit, arg, session_id
+        vault: Path al vault
+        config: Config cargada (opcional)
+    """
+    db_path = _resolve_db_path(config)
+
+    if not db_path.exists():
+        print(f"[error] Base de datos no encontrada: {db_path}", file=sys.stderr)
+        print("Asegurate de que Cognitive Trace esté activo y haya registrado eventos.", file=sys.stderr)
+        return 1
+
+    query = args.query
+    if query not in QUERIES:
+        print(f"[error] Query desconocida: '{query}'. Válidas: {VALID_QUERIES}", file=sys.stderr)
+        return 1
+
+    limit = args.limit
+    arg = args.arg
+    session_id = args.session_id
+
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            handler = QUERIES[query]
+            # Pasar solo los kwargs que el handler necesita
+            import inspect
+            sig = inspect.signature(handler)
+            kwargs = {"conn": conn, "limit": limit}
+            if "arg" in sig.parameters:
+                kwargs["arg"] = arg
+            if "session_id" in sig.parameters:
+                kwargs["session_id"] = session_id
+            result = handler(**kwargs)
+            print(result)
+            return 0
+    except Exception as e:
+        print(f"[error] {e}", file=sys.stderr)
+        return 1

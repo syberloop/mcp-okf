@@ -250,6 +250,27 @@ def _extract_result_nodes(tool_name: str, args: list[str],
         return None
 
 
+def _extract_result_edges(tool_name, args, result):
+    """Extrae result_edges del output JSON de traverse para Cognitive Trace."""
+    if tool_name != "okf_traverse":
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        if "--json" in args:
+            data = json.loads(result.stdout)
+        else:
+            rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
+                                   text=True, timeout=20,
+                                   env={**os.environ, "PYTHONPATH": str(MCP_DIR), "OKF_MCP_CALLER": "1"})
+            if rerun.returncode != 0:
+                return None
+            data = json.loads(rerun.stdout)
+        return data.get("result_edges")
+    except Exception:
+        return None
+
+
 def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
     """Extrae paths de nodos del output textual de okf_graph.
 
@@ -292,6 +313,9 @@ def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedPro
     }
     if nodes:
         event["result_nodes"] = nodes
+    edges = _extract_result_edges(tool_name, args, result)
+    if edges:
+        event["result_edges"] = edges
     _append_jsonl(event)
 
 
@@ -346,7 +370,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
 
 
 @mcp.tool()
-def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "") -> str:
+def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "", edge_type: str = "") -> str:
     """Travesía semántica del grafo OKF. Devuelve frontmatter del concepto + vecindario (wikilinks, backlinks, cyber.corrects).
 
     USO PRIMARIO para consultar el vault. Preferir sobre search.
@@ -359,6 +383,7 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
         json_output: Si True, salida JSON para consumo programático
         seeds: Slugs separados por coma para múltiples orígenes (unión + deduplicación).
                Ej: 'frameworks/tp3-cibernetico,decisions/description-cibernetico-okf'
+        edge_type: Filtrar por tipo de arista tipada (extiende, refina, fundamenta, aplica, depende, corrige)
     """
     args = ["traverse"]
     params = {"depth": depth, "direction": direction, "no_cyber": no_cyber}
@@ -380,6 +405,9 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
         args.append("--no-cyber")
     if json_output:
         args.append("--json")
+    if edge_type:
+        args += ["--edge-type", edge_type]
+        params["edge_type"] = edge_type
     return _run(args, tool_name="okf_traverse", params=params)
 
 
@@ -453,14 +481,14 @@ def read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = False) -
 
 
 @mcp.tool()
-def graph(command: str, arg: str = "") -> str:
-    """Analiza el grafo de wikilinks y tags del vault OKF.
+def graph(command: str, arg: str = "", edge_type: str = "") -> str:
+    """Analiza el grafo de wikilinks, aristas tipadas y tags del vault OKF.
 
     Útil para preguntas sobre relaciones, dependencias, estructura o agrupación temática.
 
     Args:
         command: Comando del grafo. Uno de:
-            - 'stats': estado general (total nodos, huérfanos, tags)
+            - 'stats': estado general (total nodos, huérfanos, tags, aristas tipadas)
             - 'orphans': conceptos sin wikilinks
             - 'hubs': conceptos más referenciados
             - 'backlinks': conceptos que referencian a ARG (requiere arg)
@@ -471,12 +499,52 @@ def graph(command: str, arg: str = "") -> str:
             - 'dump': volcado completo del grafo
             - 'dirs': árbol de directorios con conteo de conceptos
             - 'types': distribución de conceptos por type (frontmatter)
+            - 'suggest-edge-types': sugiere tipos de arista para wikilinks existentes
         arg: Argumento adicional (slug de concepto para backlinks/deps, nombre de tag para tags)
+        edge_type: Filtrar backlinks/deps por tipo de arista (extiende, refina, etc.)
     """
     args = ["graph", command]
     if arg:
         args.append(arg)
-    return _run(args, tool_name="okf_graph", params={"command": command, "arg": arg})
+    if edge_type:
+        args += ["--edge-type", edge_type]
+    params = {"command": command, "arg": arg}
+    if edge_type:
+        params["edge_type"] = edge_type
+    return _run(args, tool_name="okf_graph", params=params)
+
+
+@mcp.tool()
+def graph_suggest_edge_types(apply: bool = False) -> str:
+    """Sugiere tipos de arista para wikilinks existentes sin tipo.
+
+    Analiza todas las aristas del grafo y propone tipos semanticos
+    (extiende, refina, fundamenta, aplica, depende, corrige) basandose
+    en los tipos de nodo origen y destino.
+
+    Args:
+        apply: Si True, escribe las sugerencias de confianza ALTA en el frontmatter.
+    """
+    args = ["graph", "suggest-edge-types"]
+    params = {"command": "suggest-edge-types", "apply": apply}
+    if apply:
+        args.append("--apply")
+    return _run(args, tool_name="okf_graph", params=params)
+
+
+@mcp.tool()
+def graph_impact(slug: str) -> str:
+    """Análisis de impacto ontológico: qué nodos revisar si este cambia.
+
+    Sigue las aristas tipadas en dirección del impacto para determinar
+    qué conceptos dependen ontológicamente de este nodo y deberían
+    revisarse si se modifica.
+
+    Args:
+        slug: Slug del concepto modificado (ej: 'frameworks/tp3-cibernetico')
+    """
+    return _run(["graph", "impact", slug], tool_name="okf_graph",
+                params={"command": "impact", "arg": slug})
 
 
 @mcp.tool()
@@ -559,7 +627,7 @@ def stale(json_output: bool = False) -> str:
 
 
 @mcp.tool()
-def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "") -> str:
+def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "", links: str = "") -> str:
     """Crea un concepto nuevo en el vault OKF con frontmatter consistente.
 
     Usar SIEMPRE en vez de write_file para crear conceptos.
@@ -573,6 +641,8 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
         cyber: Si True y el type califica, agrega bloque cyber con placeholders
         dry_run: Si True, previsualiza sin escribir
         body: Contenido completo del body (opcional — si se omite, usa template por defecto)
+        links: Links tipados separados por coma, formato target:type
+               (ej: 'frameworks/tp3:extiende,decisions/criterio:refina')
     """
     args = ["new", "--type", type, "--title", title, "--description", description]
     if tags:
@@ -585,10 +655,16 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
         args.append("--dry-run")
     if body:
         args += ["--body", body]
+    if links:
+        for link in links.split(","):
+            link = link.strip()
+            if link:
+                args += ["--link", link]
     return _run(args, tool_name="okf_new", params={
         "type": type, "title": title, "description": description,
         "tags": tags, "status": status, "cyber": cyber, "dry_run": dry_run,
         "body": body[:100] + "..." if len(body) > 100 else body,
+        "links": links if links else None,
     })
 
 
@@ -610,6 +686,9 @@ def _persist_analytics(query: str, text: str) -> None:
     }
     if nodes:
         event["result_nodes"] = nodes
+    edges = _extract_result_edges(tool_name, args, result)
+    if edges:
+        event["result_edges"] = edges
     _append_jsonl(event)
 
 
@@ -1017,7 +1096,6 @@ def file_info(slug: str, json_output: bool = False) -> str:
 
 
 @mcp.tool()
-@mcp.tool()
 def trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
     """Rastrea referencias a una query en todas las capas del ecosistema OKF.
 
@@ -1037,6 +1115,7 @@ def trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
                 params={"query": query, "layers": layers})
 
 
+@mcp.tool()
 def review() -> str:
     """Busca conceptos con cyber.review_on vencido y los reporta.
 

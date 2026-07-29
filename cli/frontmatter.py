@@ -196,3 +196,123 @@ def increment_reads(filepath):
     new_content = f"---\n{fm}{after_fm}"
     filepath.write_text(new_content, encoding="utf-8")
     return new_val
+
+
+def extract_typed_links(md_path):
+    """Extrae aristas tipadas del campo 'links:' en el frontmatter.
+
+    Args:
+        md_path: Path al archivo .md.
+
+    Returns:
+        list[dict]: Lista de {"target": str, "type": str}.
+        Lista vacía si no hay campo 'links:' o el frontmatter está mal formado.
+    """
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except Exception:
+        return []
+
+    fm, _ = parse_frontmatter(text)
+    if fm is None:
+        return []
+
+    links = fm.get("links")
+    if not isinstance(links, list):
+        return []
+
+    result = []
+    for item in links:
+        if isinstance(item, dict) and "target" in item and "type" in item:
+            result.append({
+                "target": str(item["target"]),
+                "type": str(item["type"]),
+            })
+    return result
+
+
+def validate_cross_type(source_type, source_path, links, vault, graph):
+    """Validación cross-type no bloqueante para aristas tipadas.
+
+    Verifica que los pares (type_origen, type_destino, edge_type) sean
+    semánticamente válidos según EDGE_TYPE_DEFINITIONS. También detecta
+    exclusión mutua (extiende + refina mismo target) y corrige sin target
+    deprecado.
+
+    Args:
+        source_type: Type del nodo origen (str).
+        source_path: Path relativo del nodo origen (str).
+        links: Lista de dicts {"target": str, "type": str}.
+        vault: Path al vault root.
+        graph: Grafo construido con build_graph().
+
+    Returns:
+        list[str]: Lista de warnings (vacía = todo OK).
+    """
+    from cli.edge_types import validate_cross_type_pair, EDGE_TYPE_DEFINITIONS
+
+    warnings = []
+
+    for link in links:
+        target_path = link["target"]
+        edge_type = link["type"]
+
+        # Obtener type del destino desde el frontmatter
+        target_file = vault / target_path
+        target_type = "?"
+        if target_file.exists():
+            try:
+                text = target_file.read_text(encoding="utf-8")
+                fm, _ = parse_frontmatter(text)
+                if fm and fm.get("type"):
+                    target_type = str(fm["type"])
+            except Exception:
+                pass
+
+        # Validar par cross-type
+        pair_warnings = validate_cross_type_pair(
+            source_type, target_type, edge_type
+        )
+        for w in pair_warnings:
+            warnings.append(
+                f"links: {source_path} → {target_path}: {w}"
+            )
+
+        # Exclusión mutua: mismo target con extiende Y refina
+        other_types = {
+            l["type"] for l in links
+            if l["target"] == target_path and l["type"] != edge_type
+        }
+        if edge_type == "extiende" and "refina" in other_types:
+            warnings.append(
+                f"links: {source_path} → {target_path}: exclusión mutua — "
+                f"'extiende' y 'refina' en el mismo par"
+            )
+        if edge_type == "refina" and "extiende" in other_types:
+            warnings.append(
+                f"links: {source_path} → {target_path}: exclusión mutua — "
+                f"'extiende' y 'refina' en el mismo par"
+            )
+
+        # corrige sin target deprecado ni corrected_by
+        if edge_type == "corrige" and target_file.exists():
+            try:
+                text = target_file.read_text(encoding="utf-8")
+                fm, _ = parse_frontmatter(text)
+                if fm:
+                    status = str(fm.get("status", ""))
+                    cyber = fm.get("cyber")
+                    has_corrected_by = (
+                        isinstance(cyber, dict)
+                        and bool(cyber.get("corrected_by"))
+                    )
+                    if "deprec" not in status.lower() and not has_corrected_by:
+                        warnings.append(
+                            f"links: {source_path} corrige a '{target_path}' "
+                            f"pero el target no está marcado como deprecado "
+                            f"ni tiene cyber.corrected_by."
+                        )
+            except Exception:
+                pass
+
+    return warnings

@@ -97,13 +97,24 @@ def build_parser():
                              help="No seguir aristas cyber.corrects/corrected_by")
     sp_traverse.add_argument("--json", action="store_true", default=False,
                              help="Salida JSON")
+    sp_traverse.add_argument("--edge-type", dest="edge_type", type=str, default=None,
+                             choices=["extiende", "refina", "fundamenta",
+                                      "aplica", "depende", "corrige"],
+                             help="Filtrar por tipo de arista tipada")
 
     # ── graph ──
     sp_graph = subparsers.add_parser("graph", help="Analizar el grafo de wikilinks")
     sp_graph.add_argument("subcommand", nargs="?", type=str,
-                          help="stats|orphans|hubs|backlinks|deps|tags|bridges|cluster|path|dump|dirs|types")
+                          help="stats|orphans|hubs|backlinks|deps|tags|bridges|cluster|path|dump|dirs|types|impact|suggest-edge-types")
     sp_graph.add_argument("args", nargs="*", type=str,
                           help="Argumentos adicionales para el subcomando")
+    sp_graph.add_argument("--edge-type", dest="edge_type", type=str, default=None,
+                          help="Filtrar backlinks/deps por tipo de arista "
+                               "(extiende, refina, fundamenta, aplica, depende, corrige)")
+    sp_graph.add_argument("--apply", action="store_true", default=False,
+                          help="Con suggest-edge-types: aplicar sugerencias ALTA")
+    sp_graph.add_argument("--dry-run", action="store_true", default=False,
+                          help="Con suggest-edge-types --apply: previsualizar sin escribir")
 
     # ── health ──
     sp_health = subparsers.add_parser("health", help="Chequeo completo de salud")
@@ -134,6 +145,9 @@ def build_parser():
                         help="Contenido del body (reemplaza el template por defecto)")
     sp_new.add_argument("--body-file", default=None,
                         help="Archivo con el contenido del body")
+    sp_new.add_argument("--link", dest="links", action="append", default=None,
+                        help="Link tipado: 'target:type' (repetible). "
+                             "Ej: --link frameworks/tp3:extiende")
 
     # ── touch ──
     sp_touch = subparsers.add_parser("touch", help="Estadísticas de lecturas")

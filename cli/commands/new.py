@@ -10,11 +10,11 @@ from pathlib import Path
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
     "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow", "Criterio",
-    "Sesion", "Research", "Mapa",
+    "Sesion", "Research", "Mapa", "Harness",
 }
 
 # Types que califican para bloque cyber: — defaults
-CYBER_TYPES = {"Sistema", "Agente", "Decision", "Plan", "Project", "Insight"}
+CYBER_TYPES = {"Sistema", "Agente", "Decision", "Plan", "Project", "Insight", "Harness"}
 
 # Mapeo type → directorio — defaults
 TYPE_DIR = {
@@ -34,6 +34,7 @@ TYPE_DIR = {
     "Sesion": "sesiones",
     "Research": "research",
     "Mapa": "mapas",
+    "Harness": "harnesses",
 }
 
 BODY_TEMPLATES = {
@@ -75,6 +76,51 @@ BODY_TEMPLATES = {
 
 -
 -
+""",
+    "Harness": """## Tool objetivo
+
+(¿Qué tool envuelve este harness? bash, playwright, git, mcp-okf...)
+
+## Script
+
+(¿Ruta al script que implementa el harness? Ej: ~/.hermes/scripts/terminal_harness.py)
+
+## Uso
+
+```bash
+python3 <script> "<comando>" [timeout]
+```
+
+## Protocolo de respuesta
+
+| Campo | Tipo | Valores |
+|-------|------|---------|
+| status | enum | success \\| retry \\| needs_reasoning \\| fatal |
+| category | string | ok, timeout, permission_denied, ... |
+| exit_code | int | Código de salida real |
+| suggestion | string | Acción recomendada para el LLM |
+
+## Categorías de error
+
+### RETRY
+
+| Categoría | Patrón | Sugerencia |
+|-----------|--------|------------|
+
+### NEEDS_REASONING
+
+| Categoría | Patrón | Sugerencia |
+|-----------|--------|------------|
+
+### FATAL
+
+| Categoría | Patrón | Sugerencia |
+|-----------|--------|------------|
+
+## Relacionado
+
+- [[agentes/]] — agentes que consumen este harness
+- [[specs/harnesses-como-nodos-del-grafo]] — spec del type Harness
 """,
     "Insight": """## Observación
 
@@ -177,8 +223,45 @@ def _slugify(text):
     return text
 
 
-def _build_frontmatter(concept_type, title, description, status, resource, tags, cyber, config=None):
-    """Genera el bloque YAML del frontmatter."""
+def _parse_links(links):
+    """Parsea flags --link 'target:type' a lista de dicts.
+
+    Args:
+        links: list[str] | None — cada elemento es "target:type".
+
+    Returns:
+        list[dict]: [{"target": "path.md", "type": "edge_type"}, ...]
+
+    Raises:
+        ValueError: Si el formato es inválido.
+    """
+    if not links:
+        return []
+    result = []
+    for raw in links:
+        if ":" not in raw:
+            raise ValueError(
+                f"Formato inválido: '{raw}'. Usar 'target:type' "
+                f"(ej: frameworks/tp3-cibernetico:extiende)"
+            )
+        target, edge_type = raw.rsplit(":", 1)
+        target = target.strip()
+        edge_type = edge_type.strip()
+        if not target:
+            raise ValueError(f"Target vacío en: '{raw}'")
+        if not edge_type:
+            raise ValueError(f"Tipo vacío en: '{raw}'")
+        result.append({"target": target, "type": edge_type})
+    return result
+
+
+def _build_frontmatter(concept_type, title, description, status, resource, tags,
+                       cyber, links=None, config=None):
+    """Genera el bloque YAML del frontmatter.
+
+    Args:
+        links: list[dict] | None — lista de {"target": str, "type": str}.
+    """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S-05:00")
 
     lines = ["---", f"type: {concept_type}"]
@@ -197,6 +280,13 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
 
     lines.append(f"timestamp: {now}")
     lines.append(f"created: {now}")
+
+    # --- links: field (NUEVO) ---
+    if links:
+        lines.append("links:")
+        for link in links:
+            lines.append(f"  - target: {link['target']}")
+            lines.append(f"    type: {link['type']}")
 
     # Resolver cyber_types desde config o fallback
     cyber_types = set(config.types_cyber) if config else CYBER_TYPES
@@ -232,6 +322,7 @@ def run(args, vault, config=None):
     dry_run = getattr(args, "dry_run", False)
     body_text = getattr(args, "body", None)
     body_file = getattr(args, "body_file", None)
+    links_raw = getattr(args, "links", None)
 
     # Resolver desde config o fallback a defaults
     valid_types = set(config.types_valid) if config else VALID_TYPES
@@ -257,8 +348,77 @@ def run(args, vault, config=None):
         print(f"❌ Ya existe: {filepath}", file=sys.stderr)
         return 1
 
+    # --- Parsear y validar links (NUEVO) ---
+    parsed_links = []
+    if links_raw:
+        try:
+            parsed_links = _parse_links(links_raw)
+        except ValueError as e:
+            print(f"❌ {e}", file=sys.stderr)
+            return 1
+
+        # Validación bloqueante: targets, edge_types, duplicados
+        from cli.edge_types import VALID_EDGE_TYPES
+        from cli.commands.graph import build_graph
+        from cli.frontmatter import validate_cross_type
+
+        graph = build_graph(vault)
+
+        for link in parsed_links:
+            target = link["target"]
+            edge_type = link["type"]
+
+            if edge_type not in VALID_EDGE_TYPES:
+                print(
+                    f"❌ Tipo de arista inválido: '{edge_type}'. "
+                    f"Usar: {', '.join(sorted(VALID_EDGE_TYPES))}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            target_file = vault / target
+            resolved = None
+            if target_file.exists():
+                resolved = str(target_file.relative_to(vault))
+            else:
+                try_target = target if target.endswith(".md") else target + ".md"
+                for node in graph:
+                    if try_target in node or try_target == node:
+                        resolved = node
+                        break
+
+            if resolved is None or resolved not in graph:
+                print(
+                    f"❌ Link inválido: '{target}' no existe en el grafo. "
+                    f"El target debe ser un nodo existente.",
+                    file=sys.stderr,
+                )
+                return 1
+
+            link["target"] = resolved
+
+        seen = set()
+        for link in parsed_links:
+            key = (link["target"], link["type"])
+            if key in seen:
+                print(
+                    f"❌ Link duplicado: target='{link['target']}' "
+                    f"type='{link['type']}'",
+                    file=sys.stderr,
+                )
+                return 1
+            seen.add(key)
+
+        source_path = f"{subdir}/{filename}"
+        cross_warnings = validate_cross_type(
+            concept_type, source_path, parsed_links, vault, graph
+        )
+        for w in cross_warnings:
+            print(f"⚠️  {w}", file=sys.stderr)
+
     frontmatter = _build_frontmatter(concept_type, title, description,
-                                     status, resource, tags, cyber, config)
+                                     status, resource, tags, cyber,
+                                     links=parsed_links, config=config)
     if body_file:
         try:
             body_text = Path(body_file).read_text(encoding="utf-8")

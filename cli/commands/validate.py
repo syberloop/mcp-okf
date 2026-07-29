@@ -127,13 +127,18 @@ def _check_wikilinks_in_tables(body, rel):
     return errors
 
 
-def _check_broken_wikilinks(body, rel, vault):
+def _check_broken_wikilinks(body, rel, vault, fm=None):
     """Detecta wikilinks que apuntan a archivos inexistentes.
+
+    También verifica targets en el campo 'links:' del frontmatter si fm
+    está presente.
 
     Args:
         body: Contenido del body.
         rel: Ruta relativa del archivo siendo validado.
         vault: Path al vault root.
+        fm: Frontmatter parseado (dict o None). Si está presente y tiene
+            campo 'links:', se verifican sus targets.
 
     Returns:
         list[str]: Lista de wikilinks rotos encontrados.
@@ -143,17 +148,132 @@ def _check_broken_wikilinks(body, rel, vault):
     errors = []
     links = extract_links(body)
 
-    if not links:
+    if links:
+        for target in links:
+            if target.startswith(('http://', 'https://', '#')):
+                continue
+            resolved = resolve_link(target, rel, vault)
+            if resolved is None:
+                errors.append(f"  [[{target}]] → archivo no encontrado")
+
+    # Verificar targets en links: del frontmatter
+    if fm and isinstance(fm.get("links"), list):
+        name_index = {}
+        try:
+            from cli.vault import find_md_files
+            all_files = find_md_files(vault)
+            name_index = {f.name: str(f.relative_to(vault)) for f in all_files}
+        except Exception:
+            pass
+
+        for link in fm["links"]:
+            if not isinstance(link, dict):
+                continue
+            target = str(link.get("target", ""))
+            if not target:
+                continue
+            if target.startswith(('http://', 'https://', '#')):
+                continue
+
+            # Try to resolve
+            target_file = vault / target
+            resolved = None
+            if target_file.exists():
+                resolved = str(target_file.relative_to(vault))
+            elif name_index:
+                try_target = target if target.endswith(".md") else target + ".md"
+                if try_target in name_index:
+                    resolved = name_index[try_target]
+                else:
+                    for name, rp in name_index.items():
+                        if try_target in rp:
+                            resolved = rp
+                            break
+
+            if resolved is None:
+                edge_type = link.get("type", "?")
+                errors.append(
+                    f"  links: target='{target}' type='{edge_type}' "
+                    f"→ archivo no encontrado"
+                )
+
+    return errors
+
+
+def _check_edge_type_consistency(filepath, vault):
+    """Detecta inconsistencias en aristas tipadas del campo links:.
+
+    Verifica:
+    - Edge types no reconocidos
+    - Exclusión mutua: mismo target con extiende Y refina
+    - corrige sin target deprecado ni cyber.corrected_by
+
+    Returns:
+        list[str]: Lista de errores encontrados.
+    """
+    from cli.edge_types import VALID_EDGE_TYPES
+    from cli.frontmatter import parse_frontmatter
+
+    errors = []
+    try:
+        text = filepath.read_text(encoding="utf-8")
+    except Exception:
         return errors
 
-    for target in links:
-        # Saltar links web, anclas, etc.
-        if target.startswith(('http://', 'https://', '#')):
+    fm, _ = parse_frontmatter(text)
+    if fm is None:
+        return errors
+
+    links = fm.get("links")
+    if not isinstance(links, list):
+        return errors
+
+    rel = str(filepath.relative_to(vault))
+
+    types_per_target = {}
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        target = str(link.get("target", ""))
+        edge_type = str(link.get("type", ""))
+
+        if edge_type not in VALID_EDGE_TYPES:
+            errors.append(
+                f"  links: tipo desconocido '{edge_type}' en {rel} → {target}"
+            )
             continue
 
-        resolved = resolve_link(target, rel, vault)
-        if resolved is None:
-            errors.append(f"  [[{target}]] → archivo no encontrado")
+        if target not in types_per_target:
+            types_per_target[target] = set()
+        types_per_target[target].add(edge_type)
+
+        if edge_type == "corrige":
+            target_file = vault / target
+            if target_file.exists():
+                try:
+                    t_text = target_file.read_text(encoding="utf-8")
+                    t_fm, _ = parse_frontmatter(t_text)
+                    if t_fm:
+                        status = str(t_fm.get("status", ""))
+                        cyber = t_fm.get("cyber")
+                        has_cb = (
+                            isinstance(cyber, dict)
+                            and bool(cyber.get("corrected_by"))
+                        )
+                        if "deprec" not in status.lower() and not has_cb:
+                            errors.append(
+                                f"  links: {rel} corrige a '{target}' pero el "
+                                f"target no está deprecado (status='{status}')"
+                            )
+                except Exception:
+                    pass
+
+    for target, types in types_per_target.items():
+        if "extiende" in types and "refina" in types:
+            errors.append(
+                f"  links: exclusión mutua en {rel} → {target}: "
+                f"'extiende' y 'refina' simultáneos"
+            )
 
     return errors
 
@@ -236,9 +356,14 @@ def _validate_file(filepath, vault):
         all_errors.append(f"wikilinks con pipe sin escapar dentro de tabla:\n" + "\n".join(table_wl))
 
     # ── Validación 6: Links rotos ──
-    broken = _check_broken_wikilinks(body, rel, vault)
+    broken = _check_broken_wikilinks(body, rel, vault, fm=fm)
     if broken:
         all_errors.append(f"wikilinks apuntan a archivos inexistentes:\n" + "\n".join(broken))
+
+    # ── Validación 7: Consistencia de aristas tipadas ──
+    edge_errors = _check_edge_type_consistency(filepath, vault)
+    if edge_errors:
+        all_errors.append(f"inconsistencias en links tipados:\n" + "\n".join(edge_errors))
 
     if all_errors:
         return False, f"{rel}: " + "; ".join(all_errors)

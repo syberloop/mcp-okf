@@ -1,8 +1,8 @@
 """Comando traverse — Travesía semántica del grafo del vault OKF.
 
-Recorre el grafo desde un concepto origen, siguiendo wikilinks (out + in) y
-aristas causales (cyber.corrects / cyber.corrected_by), hasta la profundidad
-indicada. En cada nodo visitado, devuelve solo el frontmatter — no el body.
+Recorre el grafo desde un concepto origen, siguiendo wikilinks (out + in),
+aristas tipadas (links: en frontmatter) y aristas causales
+(cyber.corrects / cyber.corrected_by), hasta la profundidad indicada. En cada nodo visitado, devuelve solo el frontmatter — no el body.
 
 Esto permite navegación semántica eficiente: en una sola llamada se obtiene
 el vecindario de un concepto sin leer N archivos completos.
@@ -10,6 +10,7 @@ el vecindario de un concepto sin leer N archivos completos.
 Uso:
     python3 -m cli traverse <concepto> [--depth N] [--json]
                                     [--direction both|out|in] [--no-cyber]
+                                    [--edge-type <tipo>]
 """
 
 import json
@@ -138,6 +139,7 @@ def run(args, vault, config=None):
     direction = getattr(args, "direction", "both")
     json_out = getattr(args, "json", False)
     no_cyber = getattr(args, "no_cyber", False)
+    edge_type_filter = getattr(args, "edge_type", None)
 
     # Construir grafo de wikilinks (ya resuelve todos los links)
     graph = build_graph(vault)
@@ -210,6 +212,10 @@ def run(args, vault, config=None):
             for tgt in graph.get(current_path, {}).get("out", []):
                 neighbors.append((tgt, "wikilink"))
 
+            # Aristas tipadas salientes (NUEVO)
+            for entry in graph.get(current_path, {}).get("typed_out", []):
+                neighbors.append((entry["target"], entry["type"]))
+
             if not no_cyber:
                 corrects, _ = _get_cyber_edges(filepath)
                 for ref in corrects:
@@ -221,6 +227,10 @@ def run(args, vault, config=None):
             for src in graph.get(current_path, {}).get("in", []):
                 neighbors.append((src, "backlink"))
 
+            # Aristas tipadas entrantes (NUEVO)
+            for entry in graph.get(current_path, {}).get("typed_in", []):
+                neighbors.append((entry["target"], entry["type"]))
+
             if not no_cyber:
                 _, corrected_by = _get_cyber_edges(filepath)
                 for ref in corrected_by:
@@ -230,6 +240,11 @@ def run(args, vault, config=None):
 
         for neighbor_path, n_edge_type in neighbors:
             if neighbor_path not in visited:
+                # Aplicar filtro edge_type si está definido
+                # El nodo origen (edge_type="origin") y aristas que matchean el filtro pasan
+                if edge_type_filter:
+                    if n_edge_type != edge_type_filter and n_edge_type not in ("origin",):
+                        continue
                 queue.append(
                     (neighbor_path, current_depth + 1, n_edge_type,
                      current_path, seed_path)
@@ -247,6 +262,13 @@ def run(args, vault, config=None):
             result["origin"] = resolved_seeds[0]
         else:
             result["seeds"] = resolved_seeds
+        if edge_type_filter:
+            result["edge_type"] = edge_type_filter
+        # Aristas resultantes para Cognitive Trace
+        result["result_edges"] = [
+            {"from": n["from"], "to": n["path"], "type": n["edge_type"]}
+            for n in nodes if n["from"] is not None
+        ]
         if warnings:
             result["warnings"] = warnings
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -266,6 +288,21 @@ def run(args, vault, config=None):
         print()
         for w in warnings:
             print(f"   ⚠️  {w}")
+
+    # ── Sugerencia ontológica (Nivel 2): si no se usó edge_type, sugerir ──
+    if not edge_type_filter:
+        # Contar aristas tipadas atravesadas
+        typed_edge_types = {n["edge_type"] for n in nodes
+                            if n["edge_type"] not in ("origin", "wikilink", "backlink",
+                                                       "cyber.corrects", "cyber.corrected_by")}
+        if typed_edge_types:
+            et_list = ", ".join(sorted(typed_edge_types))
+            typed_count = len([n for n in nodes if n["edge_type"] in typed_edge_types])
+            print()
+            print(f"   💡 Tip: esta travesía incluye {typed_count} "
+                  f"aristas tipadas ({et_list}).")
+            print(f"   Para filtrar por tipo: --edge-type <tipo>")
+            print(f"   Ejemplo: traverse <slug> --edge-type extiende")
 
     print()
 
