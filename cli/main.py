@@ -59,7 +59,9 @@ def build_parser():
     sp_search.add_argument("--all", action="store_true", default=False,
                            help="Con --todos: incluir completadas - [x]")
     sp_search.add_argument("--aging", action="store_true", default=False,
-                           help="Con --todos: mostrar antigüedad vía git blame")
+                           help="Con --todos: mostrar antigüedad de tareas")
+    sp_search.add_argument("--with-graph", action="store_true", default=False,
+                           help="Mostrar aristas tipadas entre los resultados al final")
     sp_search.add_argument("--json", action="store_true", default=False,
                            help="Salida JSON")
     sp_search.add_argument("--cyber-field", type=str, default=None,

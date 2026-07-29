@@ -412,7 +412,7 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
 
 
 @mcp.tool()
-def search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "") -> str:
+def search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "", with_graph: bool = False) -> str:
     """Búsqueda FTS5 en el vault OKF. FALLBACK — preferir traverse o lectura de índices.
 
     Usar solo cuando:
@@ -431,6 +431,7 @@ def search(query: str = "", type: str = "", status: str = "", cyber_field: str =
         json_output: Si True, salida JSON
         since: Filtrar por timestamp >= fecha (ISO 8601, inclusivo, ej: "2026-07-20")
         until: Filtrar por timestamp <= fecha (ISO 8601, inclusivo)
+        with_graph: Si True, incluye sección ## Relaciones detectadas con aristas tipadas entre resultados
     """
     args = ["search"]
     if query:
@@ -451,6 +452,8 @@ def search(query: str = "", type: str = "", status: str = "", cyber_field: str =
         args += ["--since", since]
     if until:
         args += ["--until", until]
+    if with_graph:
+        args.append("--with-graph")
     return _run(args, tool_name="okf_search", params={
         "query": query, "type": type, "status": status,
         "cyber_field": cyber_field, "cyber_value": cyber_value,

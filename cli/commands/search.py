@@ -364,6 +364,48 @@ def _print_table(concepts):
     print(f"{len(concepts)} concepto(s)")
 
 
+def _find_typed_edges(concepts, vault):
+    """Encuentra aristas tipadas entre los conceptos del resultado."""
+    result_paths = {c["file"] for c in concepts}
+    edges = []
+
+    for c in concepts:
+        filepath = vault / c["file"]
+        try:
+            text = filepath.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        fm, _ = parse_frontmatter(text)
+        if not fm:
+            continue
+        links = fm.get("links")
+        if not links or not isinstance(links, list):
+            continue
+        for link in links:
+            if not isinstance(link, dict):
+                continue
+            target = link.get("target", "")
+            # Normalizar: quitar .md si existe
+            target = target.replace(".md", "")
+            edge_type = link.get("type", "wikilink")
+            # Ver si el target está en los resultados (con o sin .md)
+            if target in result_paths or f"{target}.md" in result_paths:
+                edges.append((c["file"], target, edge_type))
+
+    return edges
+
+
+def _print_typed_edges(edges):
+    """Imprime sección de relaciones detectadas."""
+    if not edges:
+        return
+    print()
+    print("## Relaciones detectadas")
+    for source, target, etype in edges:
+        print(f"  {source}")
+        print(f"    └─ {etype} → {target}")
+
+
 def run(args, vault, config=None):
     """Ejecuta búsqueda de conceptos o tareas."""
     json_out = getattr(args, "json", False)
@@ -378,6 +420,8 @@ def run(args, vault, config=None):
     review_due = getattr(args, "review_due", False)
     since = getattr(args, "since", None)
     until = getattr(args, "until", None)
+
+    with_graph = getattr(args, "with_graph", False)
 
     if with_aging and not todos_mode:
         print("Error: --aging solo funciona con --todos", file=sys.stderr)
@@ -477,5 +521,11 @@ def run(args, vault, config=None):
         print(json.dumps(concepts, ensure_ascii=False, indent=2))
     else:
         _print_table(concepts)
+        if with_graph and not todos_mode:
+            edges = _find_typed_edges(concepts, vault)
+            if edges:
+                _print_typed_edges(edges)
+            else:
+                print("\n(sin aristas tipadas entre los resultados)")
 
     return 0
