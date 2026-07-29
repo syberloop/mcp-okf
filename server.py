@@ -1126,6 +1126,26 @@ def review() -> str:
     return _run(["review"], tool_name="okf_review")
 
 
+@mcp.tool()
+def discover(query: str, limit: int = 3, depth: int = 1) -> str:
+    """Búsqueda híbrida: search → top-N → traverse → grafo unificado.
+
+    Combina la precisión de search con la estructura de traverse.
+    Una sola llamada devuelve los top resultados Y su vecindario
+    (wikilinks, backlinks), eliminando la necesidad de follow-up reads.
+
+    Args:
+        query: Texto a buscar en título, descripción y tags
+        limit: Top N resultados a expandir con traverse (default 3)
+        depth: Profundidad de traverse desde cada semilla (default 1)
+    """
+    return _run(["discover", "--query", query,
+                 "--limit", str(limit),
+                 "--depth", str(depth)],
+                tool_name="okf_discover",
+                params={"query": query, "limit": limit, "depth": depth})
+
+
 # Inicializar DB al cargar el módulo
 _init_db()
 

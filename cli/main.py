@@ -175,6 +175,17 @@ def build_parser():
     sp_analytics.add_argument("--session-id", type=str, default="",
                               help="Filtrar por sesión (vacío = actual vía $OKF_SESSION_ID)")
 
+    # ── discover ──
+    sp_discover = subparsers.add_parser("discover", help="Búsqueda híbrida: search → top-3 → traverse → grafo unificado")
+    sp_discover.add_argument("--query", type=str, default=None,
+                             help="Texto a buscar en title, description y tags")
+    sp_discover.add_argument("--limit", type=int, default=3,
+                             help="Top N resultados a expandir con traverse (default 3)")
+    sp_discover.add_argument("--depth", type=int, default=1,
+                             help="Profundidad de traverse por semilla (default 1)")
+    sp_discover.add_argument("--json", action="store_true", default=False,
+                             help="Salida JSON")
+
     # ── dashboard ──
     sp_dash = subparsers.add_parser("dashboard", help="Generar dashboard.md")
 
@@ -309,6 +320,10 @@ def main(argv=None):
 
         elif command == "analytics":
             from cli.commands.analytics import run
+            _exit = run(args, vault, config) or 0
+
+        elif command == "discover":
+            from cli.commands.discover import run
             _exit = run(args, vault, config) or 0
 
         elif command == "dashboard":
