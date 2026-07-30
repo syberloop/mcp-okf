@@ -1,27 +1,27 @@
 # OKF MCP Server
 
-Servidor MCP (Model Context Protocol) para vaults OKF. Expone 14 tools que permiten a agentes de IA (Claude Code, Hermes, Cursor, etc.) consultar, crear y analizar conceptos en un vault de conocimiento sin acceso directo al filesystem.
+MCP (Model Context Protocol) server for OKF vaults. Exposes 17 tools that let AI agents (Claude Code, Hermes, Cursor, etc.) query, create, and analyze concepts in a knowledge vault — no direct filesystem access needed.
 
-## ¿Qué es OKF?
+## What is OKF?
 
-OKF (Open Knowledge Format) es una convención para representar conocimiento como archivos markdown con frontmatter YAML. El contrato mínimo es:
+OKF (Open Knowledge Format) is a convention for representing knowledge as markdown files with YAML frontmatter. The minimum contract is:
 
 ```markdown
 ---
 type: Decision
-title: "Mi primera decisión"
-description: "Resumen de una línea explicando qué es este concepto"
+title: "My first decision"
+description: "One-line summary explaining what this concept is"
 ---
 
-Contenido libre en markdown. Podés usar [[wikilinks]] para
-conectar conceptos entre sí.
+Free-form markdown content. Use [[wikilinks]] to
+connect concepts together.
 ```
 
-Cada archivo `.md` es un **concepto**. Los conceptos se vinculan con wikilinks `[[slug]]` formando un grafo de conocimiento navegable. El MCP OKF expone ese grafo como tools semánticas para agentes de IA.
+Each `.md` file is a **concept**. Concepts link to each other with `[[wikilinks]]`, forming a navigable knowledge graph. The OKF MCP exposes that graph as semantic tools for AI agents.
 
 ## Quick Start
 
-### 1. Requisitos
+### 1. Prerequisites
 
 - Python 3.12+
 - `mcp` (FastMCP)
@@ -30,47 +30,47 @@ Cada archivo `.md` es un **concepto**. Los conceptos se vinculan con wikilinks `
 pip install mcp
 ```
 
-### 2. Instalación
+### 2. Installation
 
 ```bash
-git clone <repo-url> okf-mcp
-cd okf-mcp
+git clone https://github.com/Jabar42/mcp-okf.git
+cd mcp-okf
 pip install .
 ```
 
-Esto instala el comando `okf-mcp` en el PATH.
+This installs the `okf-mcp` command in your PATH.
 
-### 3. Configurá tu vault
+### 3. Configure your vault
 
-Copiá el archivo de ejemplo a la raíz de tu vault y editalo:
+Copy the example config to your vault root and edit it:
 
 ```bash
-cp okf.config.example.yaml ~/mi-vault/.okf.config.yaml
+cp okf.config.example.yaml ~/my-vault/.okf.config.yaml
 ```
 
-Editá las secciones que necesites — como mínimo, cambiá `health.smoke_entry_point` por un concepto que exista en tu vault. Todas las claves son opcionales; si falta algo, se usa el default.
+Edit the sections you need — at minimum, change `health.smoke_entry_point` to a concept that exists in your vault. All keys are optional; if something is missing, defaults are used.
 
-El MCP encuentra la configuración en este orden:
-1. `--config <path>` en el CLI
-2. Variable de entorno `$OKF_CONFIG`
-3. `<vault>/.okf.config.yaml` (al lado de tus archivos `.md`)
+Config resolution order:
+1. `--config <path>` in the CLI
+2. `$OKF_CONFIG` environment variable
+3. `<vault>/.okf.config.yaml` (next to your `.md` files)
 4. `~/.config/okf/config.yaml` (global)
-5. Defaults embebidos
+5. Embedded defaults
 
-Y el vault en este orden:
-1. `--vault <path>` en el CLI
-2. Variable de entorno `$OKF_VAULT`
+Vault resolution order:
+1. `--vault <path>` in the CLI
+2. `$OKF_VAULT` environment variable
 3. `~/OKF-Vault` (default)
 
-### 4. Probá el health check
+### 4. Run the health check
 
 ```bash
-python3 -m cli health --vault ~/mi-vault
+python3 -m cli health --vault ~/my-vault
 ```
 
-Si ves `✅ Salud: 9/9`, tu vault está listo.
+If you see `Health: 9/9`, your vault is ready.
 
-### 5. Registrá el MCP en tu agente
+### 5. Register the MCP with your agent
 
 **Claude Code** (`~/.claude/.mcp.json`):
 
@@ -107,100 +107,115 @@ mcp_servers:
 }
 ```
 
-> ⚠️ Si usás `python3 server.py` en vez de `okf-mcp`, la ruta en `args` DEBE ser absoluta. El cliente MCP no resuelve rutas relativas en `args` aunque tenga el campo `cwd`.
+> If using `python3 server.py` instead of `okf-mcp`, the path in `args` MUST be absolute. MCP clients do not resolve relative paths in `args`, even with the `cwd` field.
 
-## Tools disponibles
+## Available Tools
 
-| Tool | Descripción |
+| Tool | Description |
 |---|---|
-| `okf_traverse` | Travesía semántica del grafo — **uso primario para consultar** |
-| `okf_read` | Leer body completo de un concepto |
-| `okf_search` | Búsqueda FTS5 — **fallback**, preferir traverse |
-| `okf_graph` | Análisis del grafo: huérfanos, hubs, backlinks, clusters |
-| `okf_new` | Crear concepto nuevo con frontmatter OKF |
-| `okf_health` | Chequeo de salud del vault (9 verificaciones) |
-| `okf_index` | Regenerar índices y log |
-| `okf_touch` | Estadísticas de lecturas |
-| `okf_review` | Conceptos con review_on vencido (loop cibernético) |
-| `okf_stale` | Detector de obsolescencia semántica |
-| `okf_session_metrics` | Métricas agregadas de sesiones |
-| `okf_analytics` | Consultas analíticas sobre eventos de trace |
-| `okf_graph_command` | Comandos al plugin Cognitive Trace en Obsidian |
-| `okf_file_info` | Metadatos de fecha de un concepto |
+| `okf_traverse` | Semantic graph traversal — **primary query tool** |
+| `okf_read` | Read a concept's full body |
+| `okf_search` | FTS5 search — **fallback**, prefer traverse |
+| `okf_graph` | Graph analysis: orphans, hubs, backlinks, clusters |
+| `okf_new` | Create a new concept with validated OKF frontmatter |
+| `okf_health` | Vault health check (9 checks) |
+| `okf_index` | Regenerate index.md and log.md |
+| `okf_touch` | Read statistics |
+| `okf_review` | Concepts with past-due review_on (cybernetic loop) |
+| `okf_stale` | Semantic staleness detector |
+| `okf_session_metrics` | Aggregated session metrics |
+| `okf_analytics` | Analytics queries over trace events |
+| `okf_graph_command` | Commands to the Cognitive Trace plugin in Obsidian |
+| `okf_graph_suggest_edge_types` | Suggest typed edge types for wikilinks |
+| `okf_graph_impact` | Ontological impact analysis |
+| `okf_file_info` | Concept file metadata (created/updated dates) |
+| `okf_trace` | Reference trace across all ecosystem layers |
 
-## El grafo semántico
+## The Semantic Graph
 
-La herramienta principal es `okf_traverse`. A diferencia de una búsqueda por keyword, la travesía sigue los wikilinks del grafo:
+The primary tool is `okf_traverse`. Unlike keyword search, traversal follows the graph's wikilinks:
 
 ```
-okf_traverse("mi-concepto", depth=2)
-→ frontmatter del concepto
-→ conceptos que enlaza (wikilinks salientes)
-→ conceptos que lo enlazan (backlinks)
-→ conceptos que corrige (cyber.corrects)
+okf_traverse("my-concept", depth=2)
+→ concept frontmatter
+→ outgoing linked concepts (wikilinks)
+→ incoming linked concepts (backlinks)
+→ corrected concepts (cyber.corrects)
+→ typed edges: extends, refines, grounds, applies, depends, corrects
 ```
 
-Esto permite que el agente **razone sobre la estructura del conocimiento**, no solo matchee texto.
+This lets the agent **reason about knowledge structure**, not just match text.
 
-## Tipos de conceptos
+## Concept Types
 
-Los tipos vienen predefinidos en el archivo de configuración:
+Types are predefined in the configuration file:
 
-| Tipo | Propósito | Lleva cyber |
+| Type | Purpose | Has cyber |
 |---|---|---|
-| `Decision` | Decisión arquitectónica o de política | ✅ |
-| `Plan` | Plan de ejecución o roadmap | ✅ |
-| `Project` | Proyecto con visión, estado y componentes | ✅ |
-| `Insight` | Observación, patrón detectado, implicación | ✅ |
-| `MarcoTeorico` | Marco teórico o framework conceptual | ❌ |
-| `LeccionAprendida` | Lección de una experiencia | ❌ |
-| `Tool` | Herramienta o script | ❌ |
-| `Spec` | Especificación técnica | ❌ |
-| `Sistema` | Configuración de runtime del ecosistema | ✅ |
-| `Agente` | Definición de un agente IA | ✅ |
-| `Skill` | Catálogo de una skill de Hermes | ❌ |
-| `Workflow` | Procedimiento o flujo de trabajo | ❌ |
-| `Criterio` | Regla de decisión o criterio | ❌ |
-| `Sesion` | Resumen de sesión | ❌ |
-| `Research` | Investigación o paper | ❌ |
+| `Decision` | Architectural or policy decision | Yes |
+| `Plan` | Execution plan or roadmap | Yes |
+| `Project` | Project with vision, status, and components | Yes |
+| `Insight` | Observation, pattern detected, implication | Yes |
+| `Framework` | Conceptual framework | No |
+| `Lesson` | Lesson from experience | No |
+| `Tool` | Tool or script | No |
+| `Spec` | Technical specification | No |
+| `System` | Ecosystem runtime configuration | Yes |
+| `Agent` | AI agent definition | Yes |
+| `Skill` | Hermes skill catalog | No |
+| `Workflow` | Procedure or workflow | No |
+| `Criterion` | Decision rule or criterion | No |
+| `Session` | Session summary | No |
+| `Research` | Research or paper | No |
 
-El bloque `cyber` (sensor → target_metric → review_on) es opcional y solo aplica para los tipos marcados con ✅.
+The `cyber` block (sensor → target_metric → review_on) is optional and only applies to types marked with Yes.
 
-## Configuración avanzada
+## Typed Edges
 
-### Loop cibernético
+Concepts can declare edges with explicit semantics in the `links:` frontmatter field:
 
-Si usás el bloque `cyber` en tus conceptos, el MCP puede cerrar el loop automáticamente:
+| Type | Meaning |
+|---|---|
+| `extends` | A adds a dimension to B |
+| `refines` | A narrows or clarifies B |
+| `grounds` | A is the theoretical basis for B |
+| `applies` | A implements B |
+| `depends` | A requires B to exist |
+| `corrects` | A replaces/invalidates part of B (only if B is deprecated) |
 
-1. `okf_new --cyber` asigna `review_on: +14d`
-2. `okf_review` lista conceptos con review vencido
-3. Un agente autónomo evalúa el outcome (success/failure) y actualiza
+## Advanced Configuration
 
-Activá este flujo definiendo `cyber.review_days` en tu `.okf.config.yaml`.
+### Cybernetic Loop
 
-### Detector de obsolescencia
+If you use the `cyber` block in your concepts, the MCP can close the loop automatically:
 
-`okf_stale` evalúa 7 señales de obsolescencia semántica:
-1. Timestamp viejo (>90 días sin cambios significativos)
-2. Pocas lecturas (<2 en 90 días)
-3. Propuesta fantasma (>30 días en status "propuesta")
-4. Huérfano (sin wikilinks entrantes ni salientes)
-5. Sin commits (>180 días sin commits que toquen el archivo)
-6. Decisión sin status
-7. Description desactualizada (checkboxes completos pero description habla de problemas)
+1. `okf_new --cyber` assigns `review_on: +14d`
+2. `okf_review` lists concepts with past-due reviews
+3. An autonomous agent evaluates the outcome (success/failure) and updates
 
-Ajustá los umbrales en `stale.*` de tu `.okf.config.yaml`.
+### Staleness Detection
 
-## Desarrollo
+`okf_stale` evaluates 7 semantic staleness signals:
+1. Old timestamp (>90 days without meaningful changes)
+2. Few reads (<2 in 90 days)
+3. Ghost proposal (>30 days in "proposed" status)
+4. Orphan (no incoming or outgoing wikilinks)
+5. No commits (>180 days without commits touching the file)
+6. Decision without status
+7. Outdated description (checkboxes complete but description still references problems)
+
+Adjust thresholds in `stale.*` of your `.okf.config.yaml`.
+
+## Development
 
 ```bash
-# Ejecutar tests
+# Run tests
 cd tests && python3 test_server.py
 
-# Probar el servidor manualmente (JSON-RPC stdio)
+# Test the server manually (JSON-RPC stdio)
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | python3 server.py
 ```
 
-## Licencia
+## License
 
 MIT

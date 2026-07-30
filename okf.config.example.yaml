@@ -1,145 +1,143 @@
 # ──────────────────────────────────────────────────────────────
-# .okf.config.yaml — Configuración del MCP OKF para tu vault
+# .okf.config.yaml — MCP OKF configuration for your vault
 # ──────────────────────────────────────────────────────────────
 #
-# CÓMO USAR ESTE ARCHIVO:
-#   1. Copiá este archivo a la raíz de tu vault como .okf.config.yaml
-#   2. Editá las secciones según tu taxonomía
-#   3. Todas las claves son opcionales — si falta algo, se usa el default
+# HOW TO USE:
+#   1. Copy this file to your vault root as .okf.config.yaml
+#   2. Edit the sections to match your taxonomy
+#   3. All keys are optional — defaults are used for anything missing
 #
-# RESOLUCIÓN EN CADENA (primero que existe gana):
-#   1. --config <path> en el CLI
-#   2. Variable de entorno $OKF_CONFIG
-#   3. <vault>/.okf.config.yaml (al lado de tus archivos .md)
-#   4. ~/.config/okf/config.yaml (global del usuario)
-#   5. Defaults embebidos (los que estás viendo acá)
+# RESOLUTION CHAIN (first found wins):
+#   1. --config <path> in the CLI
+#   2. $OKF_CONFIG environment variable
+#   3. <vault>/.okf.config.yaml (next to your .md files)
+#   4. ~/.config/okf/config.yaml (global user config)
+#   5. Embedded defaults (shown here)
 #
-# PRINCIPIO:
-#   "Hardcodeá reglas fundamentales del dominio, configurá lo que cambia."
-#   El contrato core (type + description + wikilinks) es regla
-#   fundamental y no se configura. Taxonomía, umbrales y features sí.
+# PRINCIPLE:
+#   "Hardcode fundamental domain rules, configure what changes."
+#   The core contract (type + description + wikilinks) is a
+#   fundamental rule and is not configurable. Taxonomy, thresholds,
+#   and features are.
 # ──────────────────────────────────────────────────────────────
 
-# ── Taxonomía ────────────────────────────────────────────────
-# Qué types existen, cuáles participan del loop cibernético,
-# y en qué directorio vive cada uno.
+# ── Taxonomy ────────────────────────────────────────────────
+# Which types exist, which participate in the cybernetic loop,
+# and which directory each one lives in.
 types:
-  # Tipos válidos. Cualquier type que no esté en esta lista
-  # es rechazado por okf_new y marcado por okf_health.
+  # Valid types. Any type not in this list is rejected by
+  # okf_new and flagged by okf_health.
   valid:
-    - Sistema
-    - Agente
+    - System
+    - Agent
     - Decision
     - Plan
     - Project
     - Insight
-    - MarcoTeorico
-    - LeccionAprendida
+    - Framework
+    - Lesson
     - Tool
     - Spec
     - Skill
     - Workflow
-    - Criterio
-    - Sesion
+    - Criterion
+    - Session
     - Research
 
-  # Tipos que pueden tener bloque cyber (sensor → target_metric → review_on).
-  # Solo aplica si usás el loop cibernético.
+  # Types that can have a cyber block (sensor → target_metric → review_on).
+  # Only applies if you use the cybernetic loop.
   cyber:
-    - Sistema
-    - Agente
+    - System
+    - Agent
     - Decision
     - Plan
     - Project
     - Insight
 
-  # Tipos que NUNCA llevan bloque cyber aunque el usuario pase --cyber.
+  # Types that NEVER get a cyber block even if --cyber is passed.
   excluded_cyber:
-    - MarcoTeorico
-    - LeccionAprendida
+    - Framework
+    - Lesson
     - Tool
     - Spec
 
-  # Mapeo type → directorio. okf_new crea el archivo en el
-  # directorio correcto automáticamente.
+  # Type → directory mapping. okf_new creates files in the
+  # correct directory automatically.
   directory:
-    Sistema: sistema
-    Agente: agentes
+    System: system
+    Agent: agents
     Decision: decisions
     Plan: plans
     Project: projects
     Insight: insights
-    MarcoTeorico: frameworks
-    LeccionAprendida: historias
+    Framework: frameworks
+    Lesson: lessons
     Tool: specs
     Spec: specs
     Skill: skills
     Workflow: workflows
-    Criterio: criterios
-    Sesion: sesiones
+    Criterion: criteria
+    Session: sessions
     Research: research
 
-# ── Umbrales de obsolescencia ─────────────────────────────────
-# Controlan el detector de obsolescencia semántica (okf_stale).
-# Un concepto se marca STALE si dispara 3+ de estas 7 señales.
+# ── Staleness Thresholds ─────────────────────────────────────
+# Control the semantic staleness detector (okf_stale).
+# A concept is marked STALE if it triggers 3+ of these 7 signals.
 stale:
-  # Días desde el último timestamp sin ser considerado viejo.
+  # Days since last timestamp without being considered old.
   timestamp_days: 90
 
-  # Días en status "propuesta" sin decisión.
-  propuesta_days: 30
+  # Days in "proposed" status without a decision.
+  proposed_days: 30
 
-  # Días sin commits en git que toquen este archivo.
+  # Days without git commits touching this file.
   no_commits_days: 180
 
-  # Si >= esta fracción de checkboxes están completos pero la
-  # description aún habla de problemas, se dispara la señal 7.
+  # If >= this fraction of checkboxes are complete but the
+  # description still references problems, signal 7 fires.
   checkbox_ratio: 0.7
 
-  # Patrones regex (case-insensitive) que indican lenguaje de
-  # problema en la description. Si la description matchea alguno
-  # pero los checkboxes están ≥ checkbox_ratio completos, la
-  # description está obsoleta (señal 7 del detector stale).
+  # Regex patterns (case-insensitive) that indicate problem
+  # language in the description. If the description matches any
+  # but checkboxes are >= checkbox_ratio complete, the
+  # description is stale (signal 7 of the stale detector).
   problem_patterns:
-    - \bno\s+(existe|funciona|hay|tiene|está|implementado|conectado|almacena|notifica)\b
-    - \broto[s]?\b
-    - \bfalso[s]?\b
-    - \bfalta[n]?\b
-    - \bsin\s+(implementar|resolver|definir|conectar|backend)\b
-    - \bpendiente[s]?\b
-    - \bincompleto\b
+    - \bno\s+(longer|working|available|implemented|connected|stored|notified)\b
+    - \bbroken\b
+    - \bfalse\b
+    - \bmissing\b
+    - \bnot\s+yet\b
+    - \bpending\b
+    - \bincomplete\b
     - \bplaceholder\b
-    - \bclaims?\s+fals[oa]s?\b
+    - \bclaims?\s+false\b
     - \b404\b
-    - \bCTAs?\s+rot[oa]s?\b
-    - \bcero\s+métricas\b
-    - \bno\s+está\b
-    - \bse\s+pierden\b
+    - \bno\s+metrics\b
 
-# ── Ciclo de revisión cibernética ────────────────────────────
+# ── Cybernetic Review Cycle ──────────────────────────────────
 cyber:
-  # Días hasta el review_on asignado a conceptos nuevos con --cyber.
-  # okf_review lista los conceptos cuya fecha review_on ya pasó.
+  # Days until review_on assigned to new concepts with --cyber.
+  # okf_review lists concepts whose review_on date has passed.
   review_days: 14
 
-# ── Health check ──────────────────────────────────────────────
+# ── Health Check ─────────────────────────────────────────────
 health:
-  # Slug de un concepto que exista en tu vault. El health check
-  # lo usa para verificar que okf_traverse y okf_read funcionan.
-  # Cambialo por un concepto tuyo.
+  # Slug of a concept that exists in your vault. The health check
+  # uses it to verify that okf_traverse and okf_read work.
+  # Change this to one of your concepts.
   smoke_entry_point: tp3-cibernetico
 
-# ── Exclusiones ───────────────────────────────────────────────
-# Archivos y directorios ignorados por el indexer, find_md_files,
-# y el health check.
+# ── Exclusions ───────────────────────────────────────────────
+# Files and directories ignored by the indexer, find_md_files,
+# and the health check.
 exclude:
-  # Nombres de archivo exactos a excluir.
+  # Exact filenames to exclude.
   files:
     - index.md
     - log.md
     - dashboard.md
 
-  # Nombres de directorio a excluir (en cualquier nivel).
+  # Directory names to exclude (at any level).
   dirs:
     - .git
     - .obsidian
@@ -148,161 +146,167 @@ exclude:
     - references
     - assets
 
-# ── Features opcionales ───────────────────────────────────────
+# ── Optional Features ────────────────────────────────────────
 features:
-  # Cognitive Trace: persistencia de eventos (SQLite + JSONL)
-  # para visualizar actividad del agente en Obsidian.
-  #   true  → el MCP persiste eventos y expone okf_analytics
-  #   false → el MCP es un wrapper puro, sin dependencias extra
+  # Cognitive Trace: event persistence (SQLite + JSONL)
+  # for visualizing agent activity in Obsidian.
+  #   true  → MCP persists events and exposes okf_analytics
+  #   false → MCP is a pure wrapper, no extra dependencies
   cognitive_trace: true
 
-  # Plugin hash sync: verifica que el plugin Obsidian coincida
-  # con la spec en el vault (check 8 de okf_health).
-  # Solo relevante si usás Obsidian + Cognitive Trace.
+  # Plugin hash sync: verifies the Obsidian plugin matches
+  # the spec in the vault (check 8 of okf_health).
+  # Only relevant if you use Obsidian + Cognitive Trace.
   plugin_hash_sync: true
 
-  # Rutas personalizadas para Cognitive Trace.
-  # null = usar defaults (~/.hermes/cognitive-trace.db y
+  # Cybernetic loop tools (okf_review, cyber block in health,
+  # --cyber flag in okf_new).
+  #   true  → full cyber loop support
+  #   false → vault-only mode, no cyber tools exposed
+  cyber_loop: true
+
+  # Custom paths for Cognitive Trace.
+  # null = use defaults (~/.hermes/cognitive-trace.db and
   # <vault>/.obsidian/plugins/cognitive-trace/event_log.jsonl)
   trace_db_path: null
   trace_jsonl_path: null
 
-# ── Templates de body ────────────────────────────────────────
-# Templates que okf_new inserta como body inicial de cada type.
-# Si un type no tiene template, se usa uno genérico mínimo.
-# Podés agregar templates para tus propios types.
+# ── Body Templates ──────────────────────────────────────────
+# Templates that okf_new inserts as the initial body for each type.
+# If a type has no template, a minimal generic one is used.
+# You can add templates for your own types.
 templates:
   Decision: |
-    ## Contexto
+    ## Context
 
-    (¿Qué disparó esta decisión? ¿Qué problema resuelve?)
+    (What triggered this decision? What problem does it solve?)
 
-    ## Decisión
+    ## Decision
 
-    (¿Qué se decidió? ¿Qué alternativas se descartaron?)
+    (What was decided? What alternatives were rejected?)
 
-    ## Impacto
+    ## Impact
 
-    (¿Qué cambia a partir de ahora?)
+    (What changes from now on?)
 
   Plan: |
-    ## Objetivo
+    ## Objective
 
-    (¿Qué se quiere lograr?)
+    (What do we want to achieve?)
 
-    ## Fases
+    ## Phases
 
     1.
     2.
     3.
 
-    ## Métricas
+    ## Metrics
 
-    (¿Cómo se mide el éxito?)
+    (How do we measure success?)
 
   Project: |
-    ## Visión
+    ## Vision
 
-    (¿Qué es este proyecto? ¿Por qué existe?)
+    (What is this project? Why does it exist?)
 
-    ## Estado
+    ## Status
 
-    **Fase actual:** (planificación / desarrollo / producción / abandonado)
+    **Current phase:** (planning / development / production / abandoned)
 
-    ## Componentes
+    ## Components
 
     -
     -
 
   Insight: |
-    ## Observación
+    ## Observation
 
-    (¿Qué patrón o conexión se detectó?)
+    (What pattern or connection was detected?)
 
-    ## Implicación
+    ## Implication
 
-    (¿Qué significa esto? ¿Qué acción sugiere?)
+    (What does this mean? What action does it suggest?)
 
-    ## Verificación
+    ## Verification
 
-    (¿Cómo se confirma o descarta este insight?)
+    (How is this insight confirmed or disproven?)
 
-  Sistema: |
-    ## Qué hace
+  System: |
+    ## What it does
 
-    (¿Qué configuración o comportamiento controla en el sistema agéntico?)
+    (What configuration or behavior does it control in the agentic system?)
 
-    ## Dónde está
+    ## Where it lives
 
-    (¿Archivo de config, variable de entorno, skill?)
+    (Config file, environment variable, skill?)
 
-    ## Por qué
+    ## Why
 
-    (¿Qué problema resuelve? ¿Qué pasaría si se quitara?)
+    (What problem does it solve? What would happen if removed?)
 
-    ## Relaciones
+    ## Relationships
 
-    - 
+    -
 
-  Agente: |
-    ## Rol
+  Agent: |
+    ## Role
 
-    (¿Qué rol cumple este agente en el ecosistema?)
+    (What role does this agent play in the ecosystem?)
 
-    ## Capacidades
+    ## Capabilities
 
-    - 
-    - 
+    -
+    -
 
-    ## Configuración
+    ## Configuration
 
-    (¿Modelo, tools, skills asignados?)
+    (Model, tools, assigned skills?)
 
     ## AGENT.md / SOUL.md
 
-    (¿Dónde está su archivo de definición?)
+    (Where is its definition file?)
 
   Skill: |
-    ## Identidad
+    ## Identity
 
-    | Campo | Valor |
+    | Field | Value |
     |---|---|
-    | **Nombre** | (nombre de la skill) |
+    | **Name** | (skill name) |
     | **Repo** | (URL) |
-    | **Ruta Hermes** | `~/.hermes/skills/<categoria>/<nombre>/` |
+    | **Hermes Path** | `~/.hermes/skills/<category>/<name>/` |
 
-    ## Qué hace
+    ## What it does
 
-    (¿Qué problema resuelve esta skill? ¿Cuándo debe cargarla el agente?)
+    (What problem does this skill solve? When should the agent load it?)
 
-    ## Dependencias
+    ## Dependencies
 
-    - 
-    - 
+    -
+    -
 
-    ## Archivos
+    ## Files
 
-    (¿SKILL.md, references/, scripts/?)
+    (SKILL.md, references/, scripts/?)
 
   Workflow: |
-    ## Qué problema resuelve
+    ## Problem it solves
 
-    (¿Qué problema resuelve este workflow? ¿Cuándo debería un agente sugerirlo?)
+    (What problem does this workflow solve? When should an agent suggest it?)
 
-    ## Arquitectura
+    ## Architecture
 
-    (Componentes abstractos: sensor → criterio → clasificación → acción)
+    (Abstract components: sensor → criterion → classification → action)
 
-    ## Procedimiento
+    ## Procedure
 
-    1. 
-    2. 
-    3. 
+    1.
+    2.
+    3.
 
-    ## Criterios de calidad
+    ## Quality criteria
 
-    (¿Cómo saber si el workflow está funcionando?)
+    (How do we know the workflow is working?)
 
-    ## Instanciación en OKF
+    ## OKF Instantiation
 
-    (Referencia a la instancia concreta en nuestro ecosistema)
+    (Reference to the concrete instance in our ecosystem)
