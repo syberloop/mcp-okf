@@ -137,8 +137,8 @@ def _check_graph(vault):
         leaf_nodes = set()
         for f in find_md_files(vault):
             rel = str(f.relative_to(vault))
-            # Excluir agentes: son prompts puros, no documentos de referencia
-            if rel.startswith("agentes/"):
+            # Excluir agentes y sesiones: son prompts/logs, no documentos de referencia
+            if rel.startswith("agentes/") or rel.startswith("sesiones/"):
                 leaf_nodes.add(rel)
                 continue
             try:
@@ -153,6 +153,7 @@ def _check_graph(vault):
         edges = sum(len(d["out"]) for d in graph.values())
         orphans = sum(1 for n, d in graph.items()
                       if not d["in"] and not d["out"]
+                      and not d["typed_in"] and not d["typed_out"]
                       and n not in leaf_nodes)
         density = edges / max(nodes * (nodes - 1), 1)
 

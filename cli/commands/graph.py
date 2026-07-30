@@ -204,7 +204,8 @@ def _cmd_stats(graph, tag_index):
     huérfanos = sum(1 for n, d in graph.items()
                     if not d["in"] and not d["out"]
                     and not d["typed_in"] and not d["typed_out"]
-                    and not n.startswith("agentes/"))
+                    and not n.startswith("agentes/")
+                    and not n.startswith("sesiones/"))
     lines.append(f"Huérfanos: {huérfanos}")
 
     if tag_index is not None:
@@ -219,7 +220,8 @@ def _cmd_orphans(graph):
     orphans = [n for n, d in graph.items()
                if not d["in"] and not d["out"]
                and not d["typed_in"] and not d["typed_out"]
-               and not n.startswith("agentes/")]
+               and not n.startswith("agentes/")
+               and not n.startswith("sesiones/")]
     if not orphans:
         return "No hay conceptos huérfanos."
     lines = [f"{len(orphans)} concepto(s) sin links:"]
