@@ -202,7 +202,7 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
         if rel not in backlinks or len(backlinks[rel]) == 0:
             # Excluir conceptos raíz que son naturalmente huérfanos
             concept_type = str(fm.get("type", ""))
-            if concept_type not in ("MarcoTeorico", "Spec", "Tool"):
+            if concept_type not in ("MarcoTeorico", "Spec", "Tool", "Agente"):
                 signals.append("sin backlinks")
 
         # ── Señal 5: sin commits ──

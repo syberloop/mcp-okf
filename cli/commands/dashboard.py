@@ -51,7 +51,8 @@ def _build_dashboard(vault):
     # ── Huérfanos ──
     from cli.commands.graph import build_graph
     g = build_graph(vault)
-    orphans = [n for n, d in g.items() if not d["in"] and not d["out"]]
+    orphans = [n for n, d in g.items() if not d["in"] and not d["out"]
+               and not n.startswith("agentes/")]
 
     # ── Construir dashboard.md ──
     lines = [

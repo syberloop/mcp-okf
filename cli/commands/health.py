@@ -136,11 +136,16 @@ def _check_graph(vault):
         # Construir set de nodos leaf — se excluyen del conteo de huérfanos
         leaf_nodes = set()
         for f in find_md_files(vault):
+            rel = str(f.relative_to(vault))
+            # Excluir agentes: son prompts puros, no documentos de referencia
+            if rel.startswith("agentes/"):
+                leaf_nodes.add(rel)
+                continue
             try:
                 text = f.read_text(encoding="utf-8")
                 fm, _ = parse_frontmatter(text)
                 if fm and fm.get("leaf") is True:
-                    leaf_nodes.add(str(f.relative_to(vault)))
+                    leaf_nodes.add(rel)
             except Exception:
                 pass
 
