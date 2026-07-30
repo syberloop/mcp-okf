@@ -191,7 +191,10 @@ def _cmd_backlinks(graph, filename, edge_type=None):
         if edge_type is None or e["type"] == edge_type
     ]
 
-    all_incoming = sorted(set(incoming + typed_incoming))
+    if edge_type:
+        all_incoming = sorted(set(typed_incoming))
+    else:
+        all_incoming = sorted(set(incoming + typed_incoming))
 
     if not all_incoming:
         filter_msg = f" (filtrado por tipo: {edge_type})" if edge_type else ""
@@ -221,7 +224,10 @@ def _cmd_deps(graph, filename, edge_type=None):
         if edge_type is None or e["type"] == edge_type
     ]
 
-    all_outgoing = sorted(set(outgoing + typed_outgoing))
+    if edge_type:
+        all_outgoing = sorted(set(typed_outgoing))
+    else:
+        all_outgoing = sorted(set(outgoing + typed_outgoing))
 
     if not all_outgoing:
         filter_msg = f" (filtrado por tipo: {edge_type})" if edge_type else ""
