@@ -14,15 +14,17 @@ from cli.frontmatter import extract_tags, extract_typed_links, parse_frontmatter
 
 
 def build_graph(vault):
-    """Construye grafo dirigido con aristas tipadas y no tipadas.
+    """Construye grafo dirigido con aristas tipadas y no tipadas, incluyendo scores.
 
     Returns:
         {"relpath.md": {
             "out": [...], "in": [...],
-            "typed_out": [{"target": "...", "type": "extiende"}, ...],
-            "typed_in": [{"target": "...", "type": "extiende"}, ...],
+            "typed_out": [{"target": "...", "type": "extiende", "score": 0.85}, ...],
+            "typed_in": [{"target": "...", "type": "extiende", "score": 0.85}, ...],
         }}
     """
+    from cli.edge_types import score_edge
+
     all_files = find_md_files(vault)
     name_index = {f.name: str(f.relative_to(vault)) for f in all_files}
     graph = {}
@@ -30,6 +32,20 @@ def build_graph(vault):
     for f in all_files:
         relpath = str(f.relative_to(vault))
         graph[relpath] = {"out": [], "in": [], "typed_out": [], "typed_in": []}
+
+    # ── Cache de frontmatter por archivo ──
+    fm_cache = {}
+    for f in all_files:
+        relpath = str(f.relative_to(vault))
+        try:
+            text = f.read_text(encoding="utf-8")
+            fm, _ = parse_frontmatter(text)
+            fm_cache[relpath] = fm if fm else {}
+        except Exception:
+            fm_cache[relpath] = {}
+
+    # ── Primera pasada: construir aristas ──
+    typed_edges_raw = []  # (source, target, edge_type)
 
     for f in all_files:
         relpath = str(f.relative_to(vault))
@@ -42,21 +58,67 @@ def build_graph(vault):
                 graph[relpath]["out"].append(resolved)
                 graph[resolved]["in"].append(relpath)
 
-        # --- Aristas tipadas desde frontmatter (NUEVO) ---
+        # --- Aristas tipadas desde frontmatter ---
         typed_links = extract_typed_links(f)
         for tl in typed_links:
             target_raw = tl["target"]
             edge_type = tl["type"]
             resolved = resolve_link(target_raw, vault, f.parent, name_index)
             if resolved and resolved in graph and resolved != relpath:
-                graph[relpath]["typed_out"].append({
-                    "target": resolved,
-                    "type": edge_type,
-                })
-                graph[resolved]["typed_in"].append({
-                    "target": relpath,
-                    "type": edge_type,
-                })
+                typed_edges_raw.append((relpath, resolved, edge_type))
+
+    # ── Calcular precedentes: count por (source_type, target_type, edge_type) ──
+    precedent_counts = defaultdict(int)
+    for src, tgt, etype in typed_edges_raw:
+        src_type = str(fm_cache.get(src, {}).get("type", "?"))
+        tgt_type = str(fm_cache.get(tgt, {}).get("type", "?"))
+        precedent_counts[(src_type, tgt_type, etype)] += 1
+
+    # ── Segunda pasada: insertar aristas con score ──
+    for src, tgt, etype in typed_edges_raw:
+        src_fm = fm_cache.get(src, {})
+        tgt_fm = fm_cache.get(tgt, {})
+
+        src_type = str(src_fm.get("type", "?"))
+        tgt_type = str(tgt_fm.get("type", "?"))
+
+        # Precedent ratio: (count - 1) / max(count, 1)  — sin contar esta arista
+        total = precedent_counts.get((src_type, tgt_type, etype), 0)
+        precedent = (total - 1) / max(total, 1) if total > 0 else 0.0
+
+        # Tags: usar normalize_tags para manejar str/list
+        src_tags = src_fm.get("tags", [])
+        tgt_tags = tgt_fm.get("tags", [])
+        if isinstance(src_tags, str):
+            src_tags = [t.strip() for t in src_tags.strip("[]").split(",") if t.strip()]
+        if isinstance(tgt_tags, str):
+            tgt_tags = [t.strip() for t in tgt_tags.strip("[]").split(",") if t.strip()]
+        if not isinstance(src_tags, list):
+            src_tags = []
+        if not isinstance(tgt_tags, list):
+            tgt_tags = []
+
+        edge_score = score_edge(
+            source_type=src_type,
+            target_type=tgt_type,
+            edge_type=etype,
+            source_tags=src_tags,
+            target_tags=tgt_tags,
+            source_desc=str(src_fm.get("description", "")),
+            target_desc=str(tgt_fm.get("description", "")),
+            precedent_ratio=precedent,
+        )
+
+        graph[src]["typed_out"].append({
+            "target": tgt,
+            "type": etype,
+            "score": edge_score,
+        })
+        graph[tgt]["typed_in"].append({
+            "target": src,
+            "type": etype,
+            "score": edge_score,
+        })
 
     # Deduplicar
     for node in graph:
@@ -203,12 +265,12 @@ def _cmd_backlinks(graph, filename, edge_type=None):
     filter_msg = f" [edge_type={edge_type}]" if edge_type else ""
     lines = [f"← Referencian a {resolved}{filter_msg}:"]
     for src in all_incoming:
-        # Anotar tipos de arista tipada
-        typed_types = [
-            e["type"] for e in graph[resolved]["typed_in"]
+        # Anotar tipos de arista tipada con score
+        typed_entries = [
+            f"{e['type']}:{e.get('score', '?')}" for e in graph[resolved]["typed_in"]
             if e["target"] == src
         ]
-        type_str = f" [{', '.join(typed_types)}]" if typed_types else ""
+        type_str = f" [{', '.join(typed_entries)}]" if typed_entries else ""
         lines.append(f"  {src}{type_str}")
     return "\n".join(lines)
 
@@ -236,11 +298,11 @@ def _cmd_deps(graph, filename, edge_type=None):
     filter_msg = f" [edge_type={edge_type}]" if edge_type else ""
     lines = [f"{resolved} → referencia a{filter_msg}:"]
     for tgt in all_outgoing:
-        typed_types = [
-            e["type"] for e in graph[resolved]["typed_out"]
+        typed_entries = [
+            f"{e['type']}:{e.get('score', '?')}" for e in graph[resolved]["typed_out"]
             if e["target"] == tgt
         ]
-        type_str = f" [{', '.join(typed_types)}]" if typed_types else ""
+        type_str = f" [{', '.join(typed_entries)}]" if typed_entries else ""
         lines.append(f"  {tgt}{type_str}")
     return "\n".join(lines)
 
@@ -478,10 +540,10 @@ def _cmd_dump(graph):
         out = ", ".join(data["out"]) or "—"
         incoming = ", ".join(data["in"]) or "—"
         typed_out_str = ", ".join(
-            f"{e['target']}[{e['type']}]" for e in data["typed_out"]
+            f"{e['target']}[{e['type']}:{e.get('score', '?')}]" for e in data["typed_out"]
         ) or "—"
         typed_in_str = ", ".join(
-            f"{e['target']}[{e['type']}]" for e in data["typed_in"]
+            f"{e['target']}[{e['type']}:{e.get('score', '?')}]" for e in data["typed_in"]
         ) or "—"
         lines.append(f"{node}")
         lines.append(f"  → {out}")
@@ -510,35 +572,97 @@ def _cmd_impact(graph, filename, vault=None):
 
     data = graph[resolved]
 
-    # Categorizar impactos
-    blocking = []   # 🔴 revisión obligatoria
-    warning = []    # 🟡 considerar revisión
-    info = []       # 🔵 revisar si aplica
+    # Categorizar impactos por score de arista
+    blocking = []   # 🔴 score ≥ 0.7 — revisión obligatoria
+    warning = []    # 🟡 score 0.4–0.69 — considerar revisión
+    info = []       # 🔵 score < 0.4 — revisar si aplica
 
     # X depende B → typed_in con type=depende
     for entry in data.get("typed_in", []):
         source = entry["target"]
         etype = entry["type"]
-        if etype == "depende":
-            blocking.append((source, f"{source} depende de este nodo"))
-        elif etype == "aplica":
-            blocking.append((source, f"{source} aplica este nodo"))
-        elif etype == "extiende":
-            warning.append((source, f"{source} extiende este nodo"))
-        elif etype == "refina":
-            info.append((source, f"{source} refina este nodo"))
-        elif etype == "corrige":
-            info.append((source, f"{source} corrige este nodo — ¿la corrección sigue vigente?"))
+        raw_score = entry.get("score", 0.5)  # default 0.5 si no hay score (retrocompat)
+        reason = f"{source} depende de este nodo"
+        if raw_score >= 0.7:
+            blocking.append((source, f"{reason} [score: {raw_score}]"))
+        elif raw_score >= 0.4:
+            warning.append((source, f"{reason} [score: {raw_score}]"))
+        else:
+            info.append((source, f"{reason} [score: {raw_score}]"))
+        continue
+
+    # X aplica B → typed_in con type=aplica
+    for entry in data.get("typed_in", []):
+        source = entry["target"]
+        etype = entry["type"]
+        if etype != "aplica":
+            continue
+        raw_score = entry.get("score", 0.5)
+        reason = f"{source} aplica este nodo"
+        if raw_score >= 0.7:
+            blocking.append((source, f"{reason} [score: {raw_score}]"))
+        elif raw_score >= 0.4:
+            warning.append((source, f"{reason} [score: {raw_score}]"))
+        else:
+            info.append((source, f"{reason} [score: {raw_score}]"))
+
+    # X extiende B → typed_in con type=extiende
+    for entry in data.get("typed_in", []):
+        source = entry["target"]
+        etype = entry["type"]
+        if etype != "extiende":
+            continue
+        raw_score = entry.get("score", 0.5)
+        reason = f"{source} extiende este nodo"
+        if raw_score >= 0.7:
+            warning.append((source, f"{reason} [score: {raw_score}]"))
+        elif raw_score >= 0.4:
+            info.append((source, f"{reason} [score: {raw_score}]"))
+        else:
+            info.append((source, f"{reason} (bajo score: {raw_score})"))
+
+    # X refina B → typed_in con type=refina
+    for entry in data.get("typed_in", []):
+        source = entry["target"]
+        etype = entry["type"]
+        if etype != "refina":
+            continue
+        raw_score = entry.get("score", 0.5)
+        reason = f"{source} refina este nodo"
+        if raw_score >= 0.7:
+            warning.append((source, f"{reason} [score: {raw_score}]"))
+        elif raw_score >= 0.4:
+            info.append((source, f"{reason} [score: {raw_score}]"))
+        else:
+            info.append((source, f"{reason} (bajo score: {raw_score})"))
+
+    # X corrige B → typed_in con type=corrige
+    for entry in data.get("typed_in", []):
+        source = entry["target"]
+        etype = entry["type"]
+        if etype != "corrige":
+            continue
+        raw_score = entry.get("score", 0.5)
+        reason = f"{source} corrige este nodo — ¿la corrección sigue vigente?"
+        if raw_score >= 0.7:
+            info.append((source, f"{reason} [score: {raw_score}]"))
+        else:
+            info.append((source, f"{reason} (bajo score: {raw_score})"))
 
     # B fundamenta X → typed_out con type=fundamenta
     for entry in data.get("typed_out", []):
         target = entry["target"]
         etype = entry["type"]
-        if etype == "fundamenta":
-            blocking.append((target, f"este nodo fundamenta a {target}"))
-
-    # Dependencias inversas: si B fundamenta X y B cambia, X pierde sustento
-    # → ya cubierto en typed_out fundamenta arriba
+        if etype != "fundamenta":
+            continue
+        raw_score = entry.get("score", 0.5)
+        reason = f"este nodo fundamenta a {target}"
+        if raw_score >= 0.7:
+            blocking.append((target, f"{reason} [score: {raw_score}]"))
+        elif raw_score >= 0.4:
+            warning.append((target, f"{reason} [score: {raw_score}]"))
+        else:
+            info.append((target, f"{reason} [score: {raw_score}]"))
 
     if not blocking and not warning and not info:
         return f"📋 {resolved}: sin aristas tipadas que indiquen impacto. Nadie depende ontológicamente de este nodo."

@@ -12,6 +12,7 @@ Propiedades:
                    Lista vacía = sin restricción (aplica para "corrige").
 """
 
+import re
 from typing import Optional
 
 EDGE_TYPE_DEFINITIONS = {
@@ -159,3 +160,104 @@ def validate_cross_type_pair(type_origen: str, type_destino: str,
             )
 
     return warnings
+
+
+def _jaccard(set_a: set, set_b: set) -> float:
+    """Coeficiente de Jaccard entre dos sets. 0.0 si ambos vacíos."""
+    union = len(set_a | set_b)
+    if union == 0:
+        return 0.0
+    return len(set_a & set_b) / union
+
+
+def _desc_overlap(desc_a: str, desc_b: str) -> float:
+    """Overlap de términos significativos (≥4 chars, sin stopwords) entre dos descripciones.
+
+    Usa bigramas de palabras para capturar frases cortas además de términos individuales.
+    Retorna 0.0-1.0.
+    """
+    if not desc_a or not desc_b:
+        return 0.0
+
+    stopwords = {
+        "para", "como", "una", "los", "las", "del", "que", "por", "con",
+        "sin", "mas", "sus", "entre", "sobre", "desde", "hasta", "cada",
+        "este", "esta", "esto", "pero", "tambien", "tiene", "hace",
+        "the", "and", "for", "that", "with", "from", "this", "are",
+        "not", "but", "its", "can", "has", "have", "will",
+    }
+
+    def _terms(text: str) -> set:
+        words = re.findall(r"[a-záéíóúñ]{4,}", text.lower())
+        filtered = [w for w in words if w not in stopwords]
+        # Unigrams + bigrams
+        unigrams = set(filtered)
+        bigrams = {
+            f"{filtered[i]}_{filtered[i+1]}"
+            for i in range(len(filtered) - 1)
+        }
+        return unigrams | bigrams
+
+    terms_a = _terms(desc_a)
+    terms_b = _terms(desc_b)
+    return _jaccard(terms_a, terms_b)
+
+
+def score_edge(
+    source_type: str,
+    target_type: str,
+    edge_type: str,
+    source_tags: list,
+    target_tags: list,
+    source_desc: str,
+    target_desc: str,
+    precedent_ratio: float = 0.0,
+) -> float:
+    """Score numérico 0.0-1.0 para una arista tipada basado en 4 señales semánticas.
+
+    Args:
+        source_type: Type del nodo origen (ej: 'Insight').
+        target_type: Type del nodo destino (ej: 'MarcoTeorico').
+        edge_type: Tipo de arista (ej: 'extiende').
+        source_tags: Lista de tags del nodo origen.
+        target_tags: Lista de tags del nodo destino.
+        source_desc: Description del nodo origen.
+        target_desc: Description del nodo destino.
+        precedent_ratio: Ratio 0.0-1.0 de precedentes en el grafo
+                        (cuántos otros nodos con el mismo type-pair usan este edge_type).
+
+    Returns:
+        float: Score 0.0-1.0 donde >0.7 es fuerte, <0.4 es débil.
+
+    Señales:
+        1. Structural fit (0.40): ¿el par está en valid_pairs del edge_type?
+        2. Tag overlap (0.25): Jaccard entre tags de source y target.
+        3. Description similarity (0.20): Overlap de términos significativos.
+        4. Graph precedent (0.15): Precedentes en el grafo.
+    """
+    score = 0.0
+
+    # 1. Structural fit (0.40)
+    if edge_type in EDGE_TYPE_DEFINITIONS:
+        defn = EDGE_TYPE_DEFINITIONS[edge_type]
+        valid_pairs = defn.get("valid_pairs", [])
+        if not valid_pairs:  # 'corrige' — sin restricción
+            score += 0.40
+        elif (source_type, target_type) in valid_pairs:
+            score += 0.40
+        # Par no válido → 0.0 en esta señal
+
+    # 2. Tag overlap (0.25)
+    src_tags = {str(t).strip().lower() for t in (source_tags or []) if t}
+    tgt_tags = {str(t).strip().lower() for t in (target_tags or []) if t}
+    tag_jaccard = _jaccard(src_tags, tgt_tags)
+    score += 0.25 * tag_jaccard
+
+    # 3. Description similarity (0.20)
+    desc_sim = _desc_overlap(source_desc or "", target_desc or "")
+    score += 0.20 * desc_sim
+
+    # 4. Graph precedent (0.15)
+    score += 0.15 * min(precedent_ratio, 1.0)
+
+    return round(score, 2)

@@ -169,14 +169,14 @@ def run(args, vault, config=None):
     # BFS con detección de ciclos y visited set compartido entre seeds
     visited = set()
     nodes = []
-    # Queue entries: (path, depth, edge_type, from_path, seed_path)
+    # Queue entries: (path, depth, edge_type, from_path, seed_path, score)
     queue = []
 
     for seed_path in resolved_seeds:
-        queue.append((seed_path, 0, "origin", None, seed_path))
+        queue.append((seed_path, 0, "origin", None, seed_path, 0.0))
 
     while queue:
-        current_path, current_depth, edge_type, from_path, seed_path = queue.pop(0)
+        current_path, current_depth, edge_type, from_path, seed_path, current_score = queue.pop(0)
 
         if current_path in visited:
             continue
@@ -196,6 +196,9 @@ def run(args, vault, config=None):
             "from": from_path,
             "frontmatter": fm_summary,
         }
+        # Incluir score si la arista es tipada
+        if current_score > 0:
+            node["score"] = current_score
         # Incluir seed en multi-seed mode para trazabilidad
         if len(resolved_seeds) > 1:
             node["seed"] = seed_path
@@ -210,35 +213,38 @@ def run(args, vault, config=None):
 
         if direction in ("out", "both"):
             for tgt in graph.get(current_path, {}).get("out", []):
-                neighbors.append((tgt, "wikilink"))
+                neighbors.append((tgt, "wikilink", 0.0))
 
-            # Aristas tipadas salientes (NUEVO)
+            # Aristas tipadas salientes con score
             for entry in graph.get(current_path, {}).get("typed_out", []):
-                neighbors.append((entry["target"], entry["type"]))
+                neighbors.append((entry["target"], entry["type"], entry.get("score", 0.0)))
 
             if not no_cyber:
                 corrects, _ = _get_cyber_edges(filepath)
                 for ref in corrects:
                     resolved_ref = _resolve_cyber_ref(ref, vault, name_index)
                     if resolved_ref and resolved_ref != current_path:
-                        neighbors.append((resolved_ref, "cyber.corrects"))
+                        neighbors.append((resolved_ref, "cyber.corrects", 0.0))
 
         if direction in ("in", "both"):
             for src in graph.get(current_path, {}).get("in", []):
-                neighbors.append((src, "backlink"))
+                neighbors.append((src, "backlink", 0.0))
 
-            # Aristas tipadas entrantes (NUEVO)
+            # Aristas tipadas entrantes con score
             for entry in graph.get(current_path, {}).get("typed_in", []):
-                neighbors.append((entry["target"], entry["type"]))
+                neighbors.append((entry["target"], entry["type"], entry.get("score", 0.0)))
 
             if not no_cyber:
                 _, corrected_by = _get_cyber_edges(filepath)
                 for ref in corrected_by:
                     resolved_ref = _resolve_cyber_ref(ref, vault, name_index)
                     if resolved_ref and resolved_ref != current_path:
-                        neighbors.append((resolved_ref, "cyber.corrected_by"))
+                        neighbors.append((resolved_ref, "cyber.corrected_by", 0.0))
 
-        for neighbor_path, n_edge_type in neighbors:
+        # Ordenar vecinos por score descendente (aristas más fuertes primero)
+        neighbors.sort(key=lambda x: x[2], reverse=True)
+
+        for neighbor_path, n_edge_type, n_score in neighbors:
             if neighbor_path not in visited:
                 # Aplicar filtro edge_type si está definido
                 # El nodo origen (edge_type="origin") y aristas que matchean el filtro pasan
@@ -247,7 +253,7 @@ def run(args, vault, config=None):
                         continue
                 queue.append(
                     (neighbor_path, current_depth + 1, n_edge_type,
-                     current_path, seed_path)
+                     current_path, seed_path, n_score)
                 )
 
     # ── Output JSON ──
@@ -337,7 +343,8 @@ def run(args, vault, config=None):
         if tag_str:
             print(f"{indent}   🏷️  {tag_str}")
         if node["from"]:
-            print(f"{indent}   via {node['edge_type']} ← {node['from']}")
+            score_str = f" ({node.get('score', 0):.2f})" if node.get("score", 0) > 0 else ""
+            print(f"{indent}   via {node['edge_type']}{score_str} ← {node['from']}")
         if len(resolved_seeds) > 1 and node.get("seed"):
             print(f"{indent}   🌰 semilla: {node['seed']}")
         print()

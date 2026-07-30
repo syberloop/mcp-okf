@@ -132,13 +132,13 @@ Texto con [[frameworks/tp3.md]]
         graph = build_graph(self.vault)
         output = _cmd_backlinks(graph, "frameworks/tp3.md")
         self.assertIn("insights/sistema.md", output)
-        self.assertIn("[extiende]", output)
+        self.assertIn("extiende:", output)  # score incluido: [extiende:0.4]
 
     def test_deps_includes_typed(self):
         graph = build_graph(self.vault)
         output = _cmd_deps(graph, "insights/sistema.md")
         self.assertIn("frameworks/tp3.md", output)
-        self.assertIn("[extiende]", output)
+        self.assertIn("extiende:", output)  # score incluido: [extiende:0.4]
 
     def test_backlinks_filtered_by_edge_type(self):
         graph = build_graph(self.vault)
