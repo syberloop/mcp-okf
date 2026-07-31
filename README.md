@@ -109,6 +109,21 @@ mcp_servers:
 
 > If using `python3 server.py` instead of `okf-mcp`, the path in `args` MUST be absolute. MCP clients do not resolve relative paths in `args`, even with the `cwd` field.
 
+**OpenCode** (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "mcp": {
+    "okf": {
+      "type": "local",
+      "command": ["okf-mcp"]
+    }
+  }
+}
+```
+
+> OpenCode uses a different config structure than Claude Code/Cursor. The server is configured directly under `mcp`, not inside `mcpServers`. Each entry requires `"type": "local"` and `command` as an array. Use `opencode mcp add okf -- okf-mcp` to add it automatically.
+
 ## Available Tools
 
 | Tool | Description |
