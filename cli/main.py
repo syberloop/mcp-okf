@@ -166,7 +166,7 @@ def build_parser():
     # ── analytics ──
     sp_analytics = subparsers.add_parser("analytics", help="Consultas analíticas sobre Cognitive Trace")
     sp_analytics.add_argument("--query", type=str, default="most_visited",
-                              help="Tipo de consulta (most_visited, session_heatmap, tool_usage, "
+                              help="Tipo de consulta (most_visited, session_heatmap, tool_usage, edge_type_usage, "
                                    "daily_activity, node_timeline, error_summary, co_visited, "
                                    "read_ratio, session_diff, depth_stats, entry_points, prompts)")
     sp_analytics.add_argument("--limit", type=int, default=10,

@@ -17,6 +17,7 @@ Queries disponibles:
   depth_stats        — distribución de profundidad de traverse
   entry_points       — nodos más usados como entrada de traverse
   prompts            — auto-segmentación de la sesión en prompts por gaps
+  edge_type_usage    — uso ontológico: traverses con edge_type vs sin (criterio decisión ≥50%)
 """
 
 import sqlite3
@@ -293,6 +294,55 @@ def _query_prompts(conn, limit, arg):
     return "\n".join(lines)
 
 
+def _query_edge_type_usage(conn, limit):
+    """Uso de capacidades ontológicas: % de traverses con edge_type.
+
+    Mide el criterio de éxito de la Decision "Razonamiento ontológico obligatorio"
+    (2026-07-29): ≥50% de traverses con ambigüedad ontológica deben incluir
+    edge_type. Proxy automático: traverses cuyo params contiene edge_type no vacío.
+    """
+    total = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE tool IN ('okf_traverse', 'traverse')"
+    ).fetchone()[0]
+    typed = conn.execute(
+        """SELECT COUNT(*) FROM events
+           WHERE tool IN ('okf_traverse', 'traverse')
+             AND COALESCE(json_extract(params, '$.edge_type'), '') != ''"""
+    ).fetchone()[0]
+    if not total:
+        return "(sin datos — no se han registrado traverses aún)"
+    pct = typed / total * 100
+    lines = [
+        f"Uso ontológico de traverse: {typed}/{total} con edge_type ({pct:.0f}%)",
+        f"  Criterio decisión (>=50%): {'CUMPLE' if pct >= 50 else 'NO CUMPLE'}",
+    ]
+    rows = conn.execute(
+        """SELECT date(ts) as day, COUNT(*) as total,
+                  SUM(CASE WHEN COALESCE(json_extract(params, '$.edge_type'), '') != ''
+                           THEN 1 ELSE 0 END) as typed
+           FROM events WHERE tool IN ('okf_traverse', 'traverse')
+           GROUP BY day ORDER BY day DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    if rows:
+        lines.append("Por día:")
+        for r in rows:
+            p = (r['typed'] / r['total'] * 100) if r['total'] else 0
+            lines.append(f"  {r['day']}: {r['typed']}/{r['total']} ({p:.0f}%)")
+    ets = conn.execute(
+        """SELECT json_extract(params, '$.edge_type') as et, COUNT(*) as cnt
+           FROM events
+           WHERE tool IN ('okf_traverse', 'traverse')
+             AND COALESCE(json_extract(params, '$.edge_type'), '') != ''
+           GROUP BY et ORDER BY cnt DESC"""
+    ).fetchall()
+    if ets:
+        lines.append("Tipos usados:")
+        for r in ets:
+            lines.append(f"  {r['et']}: {r['cnt']}")
+    return "\n".join(lines)
+
+
 # ── Dispatch ──
 
 QUERIES = {
@@ -309,6 +359,7 @@ QUERIES = {
     "depth_stats": _query_depth_stats,
     "entry_points": _query_entry_points,
     "prompts": _query_prompts,
+    "edge_type_usage": _query_edge_type_usage,
 }
 
 VALID_QUERIES = ", ".join(sorted(QUERIES.keys()))

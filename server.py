@@ -712,6 +712,7 @@ def analytics(query: str = "most_visited", limit: int = 10,
             - 'depth_stats': distribución de profundidad de traverse
             - 'entry_points': nodos más usados como entrada de traverse
             - 'prompts': auto-segmentación de la sesión en prompts por gaps >60s entre eventos
+            - 'edge_type_usage': uso ontológico del grafo — traverses con edge_type vs sin (mide criterio ≥50% de la Decision razonamiento-ontologico-obligatorio)
         limit: Límite de resultados (default 10)
         arg: Argumento adicional (slug para node_timeline/co_visited, "sessionA,sessionB" para session_diff)
         session_id: Filtrar por sesión (vacío = todas)
