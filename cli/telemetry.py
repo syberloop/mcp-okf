@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ _enabled: bool = True
 
 # Máximo de result_nodes por evento
 RESULT_NODES_CAP = 150
+RESULT_EDGES_CAP = 500  # las aristas de un traverse pueden exceder los nodos (multi-arista por par)
 
 
 def init(vault: Path, config=None) -> None:
@@ -138,8 +140,11 @@ def _ensure_db() -> None:
         # Migración idempotente: tablas creadas antes de result_edges
         try:
             conn.execute("ALTER TABLE events ADD COLUMN result_edges TEXT")
-        except Exception:
-            pass  # columna ya existe
+        except Exception as e:
+            # "duplicate column" es el caso esperado (ya migrada); el resto se reporta
+            # sin romper el CLI (el telemetry nunca debe interrumpir una tool call)
+            if "duplicate column" not in str(e).lower():
+                print(f"[telemetry] ALTER TABLE result_edges falló: {e}", file=sys.stderr)
     except Exception:
         pass
 
@@ -300,7 +305,7 @@ def _extract_edges(tool_name: str, params: dict, stdout: str) -> list[dict] | No
                 if em and last_path:
                     edges.append({"from": em.group(2), "to": last_path, "type": em.group(1)})
         edges = [e for e in edges if e.get("from") and e.get("to") and e.get("type")]
-        return edges[:RESULT_NODES_CAP] or None
+        return edges[:RESULT_EDGES_CAP] or None
     except Exception:
         return None
 

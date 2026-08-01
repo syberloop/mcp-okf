@@ -411,7 +411,7 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
                    aplica, depende, corrige). Anota sin filtrar.
         filter: Si True, edge_type excluye aristas que no son de ese tipo (exclusión explícita).
     """
-    if not edge_type:
+    if not edge_type or not edge_type.strip():
         return "[error] traverse requiere edge_type: todo traverse es una búsqueda ontológica — declare el tipo explorado (extiende|refina|fundamenta|aplica|depende|corrige). Ver Decision 2026-08-01."
     args = ["traverse"]
     params = {"depth": depth, "direction": direction, "no_cyber": no_cyber}

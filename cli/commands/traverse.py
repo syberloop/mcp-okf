@@ -148,6 +148,9 @@ def run(args, vault, config=None):
     no_cyber = getattr(args, "no_cyber", False)
     edge_type_filter = getattr(args, "edge_type", None)
     filter_mode = getattr(args, "filter", False)  # --filter: edge_type excluye (default: anotación)
+    if filter_mode and not edge_type_filter:
+        print("⚠️  --filter sin --edge-type: no filtra nada. Usá --edge-type <tipo> --filter.",
+              file=sys.stderr)
 
     # Construir grafo de wikilinks (ya resuelve todos los links)
     graph = build_graph(vault)
@@ -249,10 +252,11 @@ def run(args, vault, config=None):
                     if resolved_ref and resolved_ref != current_path:
                         neighbors.append((resolved_ref, "cyber.corrected_by", 0.0))
 
-        # Ordenar vecinos: en modo anotación, aristas del tipo declarado primero
-        # (score desc dentro de cada grupo). En modo filtro, orden por score.
+        # Ordenar vecinos: en modo anotación, aristas del tipo declarado primero,
+        # luego wikilinks (semántica débil), luego el resto por score.
+        # En modo filtro, orden por score.
         if edge_type_filter and not filter_mode:
-            neighbors.sort(key=lambda x: (x[1] != edge_type_filter, -x[2]))
+            neighbors.sort(key=lambda x: (x[1] != edge_type_filter, x[1] == "wikilink", -x[2]))
         else:
             neighbors.sort(key=lambda x: x[2], reverse=True)
 

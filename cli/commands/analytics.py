@@ -24,6 +24,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from cli.edge_types import VALID_EDGE_TYPES
+
+# Vocabulario de aristas tipadas para SQL (drift-free: se genera de edge_types.py)
+_EDGE_TYPES_SQL = "(" + ",".join(f"'{t}'" for t in sorted(VALID_EDGE_TYPES)) + ")"
+
 
 # ── Helpers ──
 
@@ -345,9 +350,8 @@ def _query_edge_type_usage(conn, limit):
     # matched/declared: aristas tipadas del tipo declarado / aristas tipadas totales.
     # Separa disciplina del agente (¿anota?) de calidad del grafo (¿el tipo es correcto?).
     eff = conn.execute(
-        """WITH edges AS (
-               SELECT e.id,
-                      json_extract(e.params, '$.edge_type') AS declared,
+        f"""WITH edges AS (
+               SELECT json_extract(e.params, '$.edge_type') AS declared,
                       je.value AS edge
                FROM events e, json_each(e.result_edges) je
                WHERE e.tool IN ('okf_traverse', 'traverse')
@@ -356,8 +360,7 @@ def _query_edge_type_usage(conn, limit):
            ),
            typed AS (
                SELECT declared, edge FROM edges
-               WHERE json_extract(edge, '$.type') IN
-                     ('extiende','refina','fundamenta','aplica','depende','corrige')
+               WHERE json_extract(edge, '$.type') IN {_EDGE_TYPES_SQL}
            )
            SELECT declared, COUNT(*) AS total,
                   SUM(CASE WHEN json_extract(edge, '$.type') = declared
@@ -374,25 +377,24 @@ def _query_edge_type_usage(conn, limit):
             flag = "OK" if p >= 70 else "BAJA"
             lines.append(f"  {r['declared']}: {r['matched']}/{r['total']} ({p:.0f}%) {flag}")
         zones = conn.execute(
-            """WITH edges AS (
-                   SELECT json_extract(e.params, '$.edge_type') AS declared, je.value AS edge
+            f"""WITH edges AS (
+                   SELECT json_extract(e.params, '$.edge_type') AS declared,
+                          json_extract(je.value, '$.type') AS etype,
+                          json_extract(je.value, '$.from') AS from_node
                    FROM events e, json_each(e.result_edges) je
                    WHERE e.tool IN ('okf_traverse', 'traverse')
                      AND e.result_edges IS NOT NULL
                      AND COALESCE(json_extract(e.params, '$.edge_type'), '') != ''
                ),
                typed AS (
-                   SELECT declared, edge FROM edges
-                   WHERE json_extract(edge, '$.type') IN
-                         ('extiende','refina','fundamenta','aplica','depende','corrige')
+                   SELECT declared, etype, from_node FROM edges
+                   WHERE etype IN {_EDGE_TYPES_SQL}
                )
-               SELECT CASE WHEN instr(json_extract(edge, '$.from'), '/') > 0
-                           THEN substr(json_extract(edge, '$.from'), 1,
-                                       instr(json_extract(edge, '$.from'), '/') - 1)
-                           ELSE json_extract(edge, '$.from') END AS zone,
+               SELECT CASE WHEN instr(from_node, '/') > 0
+                           THEN substr(from_node, 1, instr(from_node, '/') - 1)
+                           ELSE from_node END AS zone,
                       COUNT(*) AS total,
-                      SUM(CASE WHEN json_extract(edge, '$.type') = declared
-                               THEN 1 ELSE 0 END) AS matched
+                      SUM(CASE WHEN etype = declared THEN 1 ELSE 0 END) AS matched
                FROM typed GROUP BY zone HAVING total >= 3
                ORDER BY total DESC LIMIT ?""",
             (limit,),
