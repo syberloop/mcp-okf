@@ -104,14 +104,33 @@ def _ensure_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
                 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 
-                CREATE VIEW IF NOT EXISTS v_node_visits AS
+                DROP VIEW IF EXISTS v_node_events;
+                CREATE VIEW v_node_events AS
                 SELECT
-                    json_extract(params, '$.slug') as node,
+                    session_id,
+                    ts,
+                    CASE WHEN tool IN ('okf_traverse', 'traverse') THEN 'traverse'
+                         WHEN tool IN ('okf_read', 'read') THEN 'read'
+                         WHEN tool IN ('okf_search', 'search') THEN 'search'
+                         ELSE replace(tool, '-', '_') END AS tool_norm,
+                    json_extract(params, '$.slug') AS raw_node,
+                    CASE WHEN instr(json_extract(params, '$.slug'), '/') > 0
+                         THEN substr(json_extract(params, '$.slug'),
+                                     instr(json_extract(params, '$.slug'), '/') + 1)
+                         ELSE json_extract(params, '$.slug') END AS node,
+                    json_extract(params, '$.depth') AS depth,
+                    exit_code
+                FROM events
+                WHERE json_extract(params, '$.slug') IS NOT NULL;
+
+                DROP VIEW IF EXISTS v_node_visits;
+                CREATE VIEW v_node_visits AS
+                SELECT
+                    node,
                     COUNT(*) as visits,
                     MAX(ts) as last_visit
-                FROM events
-                WHERE tool = 'traverse'
-                  AND json_extract(params, '$.slug') IS NOT NULL
+                FROM v_node_events
+                WHERE tool_norm = 'traverse'
                 GROUP BY node
                 ORDER BY visits DESC;
             """)

@@ -114,14 +114,33 @@ def _init_db() -> None:
             FROM events
             GROUP BY session_id;
 
-            CREATE VIEW IF NOT EXISTS v_node_visits AS
+            DROP VIEW IF EXISTS v_node_events;
+            CREATE VIEW v_node_events AS
             SELECT
-                json_extract(params, '$.slug') as node,
+                session_id,
+                ts,
+                CASE WHEN tool IN ('okf_traverse', 'traverse') THEN 'traverse'
+                     WHEN tool IN ('okf_read', 'read') THEN 'read'
+                     WHEN tool IN ('okf_search', 'search') THEN 'search'
+                     ELSE replace(tool, '-', '_') END AS tool_norm,
+                json_extract(params, '$.slug') AS raw_node,
+                CASE WHEN instr(json_extract(params, '$.slug'), '/') > 0
+                     THEN substr(json_extract(params, '$.slug'),
+                                 instr(json_extract(params, '$.slug'), '/') + 1)
+                     ELSE json_extract(params, '$.slug') END AS node,
+                json_extract(params, '$.depth') AS depth,
+                exit_code
+            FROM events
+            WHERE json_extract(params, '$.slug') IS NOT NULL;
+
+            DROP VIEW IF EXISTS v_node_visits;
+            CREATE VIEW v_node_visits AS
+            SELECT
+                node,
                 COUNT(*) as visits,
                 MAX(ts) as last_visit
-            FROM events
-            WHERE tool = 'okf_traverse'
-              AND json_extract(params, '$.slug') IS NOT NULL
+            FROM v_node_events
+            WHERE tool_norm = 'traverse'
             GROUP BY node
             ORDER BY visits DESC;
         """)
@@ -673,28 +692,6 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
 
 # ── Cognitive Trace: Analítica + Comandos ──────────────────────────────────
 
-def _persist_analytics(query: str, text: str) -> None:
-    """Extrae nodos del output de analytics y escribe a JSONL si corresponde."""
-    result = subprocess.CompletedProcess(args=[], returncode=0, stdout=text, stderr="")
-    # Pasar por _extract_result_nodes vía _finish_event, que escribe JSONL+SQLite.
-    # Como no hay subprocess real, el duration_ms es 0.
-    nodes = _extract_result_nodes("okf_analytics", [query], result)
-    _persist_event("okf_analytics", {"query": query}, result, 0,
-                   nodes_count=len(nodes) if nodes else None)
-    event = {
-        "type": "tool", "session": _get_session_id(),
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "tool": "okf_analytics", "params": {"query": query},
-        "exit_code": 0, "duration_ms": 0,
-    }
-    if nodes:
-        event["result_nodes"] = nodes
-    edges = _extract_result_edges(tool_name, args, result)
-    if edges:
-        event["result_edges"] = edges
-    _append_jsonl(event)
-
-
 @mcp.tool()
 def analytics(query: str = "most_visited", limit: int = 10,
                   arg: str = "", session_id: str = "") -> str:
@@ -718,273 +715,17 @@ def analytics(query: str = "most_visited", limit: int = 10,
         limit: Límite de resultados (default 10)
         arg: Argumento adicional (slug para node_timeline/co_visited, "sessionA,sessionB" para session_diff)
         session_id: Filtrar por sesión (vacío = todas)
+
+    Delegado al CLI (analytics.py) — única fuente de verdad. La duplicación
+    inline previa causó divergencia (NameError tool_name, tool names y slugs
+    sin normalizar). Ver decision en el vault.
     """
-    try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            conn.row_factory = sqlite3.Row
-            if query == "most_visited":
-                rows = conn.execute(
-                    "SELECT node, visits, last_visit FROM v_node_visits LIMIT ?",
-                    (limit,),
-                ).fetchall()
-                if not rows:
-                    return "(sin datos — no se han registrado traverses aún)"
-                lines = [f"Top {len(rows)} nodos más visitados:"]
-                for r in rows:
-                    lines.append(f"  {r['node']} — {r['visits']} visitas (última: {r['last_visit'][:10]})")
-                result = "\n".join(lines)
-                _persist_analytics(query, result)
-
-            elif query == "least_visited":
-                rows = conn.execute(
-                    "SELECT node, visits, last_visit FROM v_node_visits ORDER BY visits ASC LIMIT ?",
-                    (limit,),
-                ).fetchall()
-                if not rows:
-                    return "(sin datos)"
-                lines = [f"Top {len(rows)} nodos menos visitados:"]
-                for r in rows:
-                    lines.append(f"  {r['node']} — {r['visits']} visitas (última: {r['last_visit'][:10]})")
-                result = "\n".join(lines)
-                _persist_analytics(query, result)
-
-            elif query == "session_heatmap":
-                sid = session_id or _get_session_id()
-                rows = conn.execute(
-                    """SELECT json_extract(params, '$.slug') as node, COUNT(*) as visits
-                       FROM events
-                       WHERE tool = 'okf_traverse' AND session_id = ?
-                         AND json_extract(params, '$.slug') IS NOT NULL
-                       GROUP BY node ORDER BY visits DESC LIMIT ?""",
-                    (sid, limit),
-                ).fetchall()
-                if not rows:
-                    return f"(sin datos para sesión {sid})"
-                lines = [f"Nodos más activos en sesión {sid[:20]}...:"]
-                for r in rows:
-                    lines.append(f"  {r['node']} — {r['visits']} visitas")
-                result = "\n".join(lines)
-                _persist_analytics(query, result)
-
-            elif query == "tool_usage":
-                rows = conn.execute(
-                    "SELECT tool, COUNT(*) as cnt, AVG(duration_ms) as avg_ms FROM events GROUP BY tool ORDER BY cnt DESC"
-                ).fetchall()
-                if not rows:
-                    return "(sin datos)"
-                lines = ["Distribución de tools:"]
-                for r in rows:
-                    lines.append(f"  {r['tool']}: {r['cnt']} llamadas (promedio {r['avg_ms']:.0f}ms)")
-                result = "\n".join(lines)
-                _persist_analytics(query, result)
-                return result
-
-            elif query == "daily_activity":
-                rows = conn.execute(
-                    """SELECT date(ts) as day, COUNT(*) as events,
-                              COUNT(DISTINCT session_id) as sessions
-                       FROM events GROUP BY day ORDER BY day DESC LIMIT ?""",
-                    (limit,),
-                ).fetchall()
-                if not rows:
-                    return "(sin datos)"
-                lines = ["Actividad por día:"]
-                for r in rows:
-                    lines.append(f"  {r['day']}: {r['events']} eventos, {r['sessions']} sesiones")
-                result = "\n".join(lines)
-                _persist_analytics(query, result)
-                return result
-
-            elif query == "node_timeline":
-                if not arg:
-                    return "[error] Requiere arg=<slug> para node_timeline"
-                rows = conn.execute(
-                    """SELECT ts, tool FROM events
-                       WHERE json_extract(params, '$.slug') = ?
-                       ORDER BY ts DESC LIMIT ?""",
-                    (arg, limit),
-                ).fetchall()
-                if not rows:
-                    return f"(sin datos para '{arg}')"
-                lines = [f"Historial de '{arg}':"]
-                for r in rows:
-                    lines.append(f"  {r['ts'][:19]} — {r['tool']}")
-                result = "\n".join(lines)
-                _persist_analytics(query, result)
-                return result
-
-            elif query == "error_summary":
-                rows = conn.execute(
-                    "SELECT tool, COUNT(*) as cnt FROM events WHERE exit_code != 0 GROUP BY tool ORDER BY cnt DESC"
-                ).fetchall()
-                if not rows:
-                    result = "Sin errores registrados."
-                else:
-                    lines = ["Tools con errores:"]
-                    for r in rows:
-                        lines.append(f"  {r['tool']}: {r['cnt']} errores")
-                    result = "\n".join(lines)
-                _persist_analytics(query, result)
-
-            elif query == "co_visited":
-                if not arg:
-                    result = "[error] Requiere arg=<slug> para co_visited"
-                else:
-                    rows = conn.execute(
-                        """SELECT json_extract(e2.params, '$.slug') as co_node,
-                                  COUNT(DISTINCT e2.session_id) as cnt
-                           FROM events e1 JOIN events e2 ON e1.session_id = e2.session_id
-                           WHERE json_extract(e1.params, '$.slug') = ?
-                             AND e2.tool = 'okf_traverse'
-                             AND json_extract(e2.params, '$.slug') IS NOT NULL
-                             AND json_extract(e2.params, '$.slug') != ?
-                           GROUP BY co_node ORDER BY cnt DESC LIMIT ?""",
-                        (arg, arg, limit),
-                    ).fetchall()
-                    if not rows:
-                        result = f"Ningún nodo co-visitado con '{arg}' en la misma sesión."
-                    else:
-                        lines = [f"Nodos visitados junto con '{arg}' en una misma sesión:"]
-                        for r in rows:
-                            lines.append(f"  {r['co_node']} — {r['cnt']} sesiones compartidas")
-                        result = "\n".join(lines)
-                        _persist_analytics(query, result)
-
-            elif query == "read_ratio":
-                rows = conn.execute(
-                    """SELECT node, visits,
-                              (SELECT COUNT(*) FROM events
-                               WHERE tool = 'okf_read'
-                                 AND json_extract(params, '$.slug') = v.node) as reads
-                       FROM v_node_visits v
-                       WHERE visits >= 2
-                       ORDER BY CAST(reads AS FLOAT) / visits ASC LIMIT ?""",
-                    (limit,),
-                ).fetchall()
-                if not rows:
-                    result = "(sin datos — se necesitan traverses y reads)"
-                else:
-                    lines = ["Nodos con menor ratio de lectura (vistos pero no leídos):"]
-                    for r in rows:
-                        ratio = (r['reads'] / r['visits'] * 100) if r['visits'] else 0
-                        lines.append(f"  {r['node']} — {r['reads']} reads / {r['visits']} traverses = {ratio:.0f}%")
-                    result = "\n".join(lines)
-                    _persist_analytics(query, result)
-
-            elif query == "session_diff":
-                if not arg or "," not in arg:
-                    result = "[error] Requiere arg='sessionA,sessionB' para session_diff"
-                else:
-                    parts = arg.split(",", 1)
-                    sid_a, sid_b = parts[0].strip(), parts[1].strip()
-                    rows = conn.execute(
-                        """SELECT DISTINCT json_extract(params, '$.slug') as node
-                           FROM events WHERE session_id = ? AND tool = 'okf_traverse'
-                             AND json_extract(params, '$.slug') IS NOT NULL
-                             AND json_extract(params, '$.slug') NOT IN (
-                               SELECT DISTINCT json_extract(params, '$.slug')
-                               FROM events WHERE session_id = ? AND tool = 'okf_traverse')
-                           LIMIT ?""",
-                        (sid_a, sid_b, limit),
-                    ).fetchall()
-                    if not rows:
-                        result = f"La sesión A no tiene nodos exclusivos (o todos están también en B)."
-                    else:
-                        lines = [f"Nodos en sesión A ({sid_a[:20]}...) que NO están en B ({sid_b[:20]}...):"]
-                        for r in rows:
-                            lines.append(f"  {r['node']}")
-                        result = "\n".join(lines)
-                        _persist_analytics(query, result)
-
-            elif query == "depth_stats":
-                rows = conn.execute(
-                    """SELECT CAST(json_extract(params, '$.depth') AS INT) as depth,
-                               COUNT(*) as cnt
-                       FROM events WHERE tool = 'okf_traverse'
-                         AND json_extract(params, '$.depth') IS NOT NULL
-                       GROUP BY depth ORDER BY depth"""
-                ).fetchall()
-                avg_row = conn.execute(
-                    "SELECT AVG(CAST(json_extract(params, '$.depth') AS FLOAT)) as avg_depth FROM events WHERE tool = 'okf_traverse'"
-                ).fetchone()
-                if not rows:
-                    result = "(sin datos de profundidad)"
-                else:
-                    lines = ["Distribución de profundidad de traverse:"]
-                    for r in rows:
-                        bar = "█" * r['cnt']
-                        lines.append(f"  depth={r['depth']}: {r['cnt']} traverses {bar}")
-                    if avg_row and avg_row['avg_depth']:
-                        lines.append(f"  Profundidad promedio: {avg_row['avg_depth']:.1f}")
-                    result = "\n".join(lines)
-                    _persist_analytics(query, result)
-
-            elif query == "prompts":
-                threshold = int(arg) if arg and arg.isdigit() else 60
-                rows = conn.execute(
-                    """WITH ordered AS (
-                         SELECT ts, tool,
-                                LAG(ts) OVER (ORDER BY ts) as prev_ts
-                         FROM events
-                       ),
-                       breaks AS (
-                         SELECT ts, tool,
-                                CASE WHEN prev_ts IS NULL
-                                     OR (strftime('%s', ts) - strftime('%s', prev_ts)) > ?
-                                     THEN 1 ELSE 0 END as is_new
-                         FROM ordered
-                       ),
-                       segmented AS (
-                         SELECT ts, tool,
-                                SUM(is_new) OVER (ORDER BY ts ROWS UNBOUNDED PRECEDING) as prompt_id
-                         FROM breaks
-                       )
-                       SELECT prompt_id,
-                              MIN(ts) as start_ts, MAX(ts) as end_ts,
-                              COUNT(*) as events,
-                              (SELECT tool FROM segmented s2 WHERE s2.prompt_id = s1.prompt_id ORDER BY ts LIMIT 1) as first_tool,
-                              (SELECT tool FROM segmented s2 WHERE s2.prompt_id = s1.prompt_id ORDER BY ts DESC LIMIT 1) as last_tool
-                       FROM segmented s1
-                       GROUP BY prompt_id ORDER BY prompt_id DESC LIMIT ?""",
-                    (threshold, limit),
-                ).fetchall()
-                if not rows:
-                    result = "(sin datos)"
-                else:
-                    lines = [f"Prompts detectados (gap > {threshold}s entre eventos):"]
-                    for r in rows:
-                        tools = f"{r['first_tool']} → {r['last_tool']}"
-                        start = r['start_ts'][:19] if r['start_ts'] else "?"
-                        dur = ""
-                        if r['start_ts'] and r['end_ts']:
-                            secs = int(float(r['end_ts'][:19].replace("T"," ")) - float(r['start_ts'][:19].replace("T"," "))) if False else 0
-                        lines.append(f"  prompt #{r['prompt_id']}: {start} — {r['events']} eventos ({tools})")
-                    lines.append(f"Usá arg=N para cambiar el umbral (default {threshold}s).")
-                    result = "\n".join(lines)
-                    _persist_analytics(query, result)
-
-            elif query == "entry_points":
-                rows = conn.execute(
-                    """SELECT json_extract(params, '$.slug') as entry, COUNT(*) as cnt
-                       FROM events WHERE tool = 'okf_traverse'
-                         AND json_extract(params, '$.slug') IS NOT NULL
-                       GROUP BY entry ORDER BY cnt DESC LIMIT ?""",
-                    (limit,),
-                ).fetchall()
-                if not rows:
-                    result = "(sin datos)"
-                else:
-                    lines = [f"Top {len(rows)} puntos de entrada de traverse:"]
-                    for r in rows:
-                        lines.append(f"  {r['entry']} — {r['cnt']} traverses")
-                    result = "\n".join(lines)
-                    _persist_analytics(query, result)
-
-            else:
-                result = f"[error] Query desconocida: '{query}'. Válidas: most_visited, least_visited, session_heatmap, tool_usage, daily_activity, node_timeline, error_summary, co_visited, read_ratio, session_diff, depth_stats, entry_points, prompts"
-    except Exception as e:
-        result = f"[error] {e}"
-    return result
+    return _run(
+        ["analytics", "--query", query, "--limit", str(limit),
+         "--arg", arg, "--session-id", session_id],
+        tool_name="okf_analytics",
+        params={"query": query, "limit": limit, "arg": arg, "session_id": session_id},
+    )
 
 
 @mcp.tool()

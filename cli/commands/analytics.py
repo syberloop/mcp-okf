@@ -77,10 +77,9 @@ def _query_session_heatmap(conn, limit, session_id):
     if not sid:
         return "[error] Sin session_id. Usá --session-id o seteá OKF_SESSION_ID."
     rows = conn.execute(
-        """SELECT json_extract(params, '$.slug') as node, COUNT(*) as visits
-           FROM events
-           WHERE tool = 'traverse' AND session_id = ?
-             AND json_extract(params, '$.slug') IS NOT NULL
+        """SELECT node, COUNT(*) as visits
+           FROM v_node_events
+           WHERE tool_norm = 'traverse' AND session_id = ?
            GROUP BY node ORDER BY visits DESC LIMIT ?""",
         (sid, limit),
     ).fetchall()
@@ -94,14 +93,16 @@ def _query_session_heatmap(conn, limit, session_id):
 
 def _query_tool_usage(conn, limit):
     rows = conn.execute(
-        "SELECT tool, COUNT(*) as cnt, AVG(duration_ms) as avg_ms "
-        "FROM events GROUP BY tool ORDER BY cnt DESC"
+        """SELECT replace(CASE WHEN tool LIKE 'okf_%' THEN substr(tool, 5)
+                              ELSE tool END, '-', '_') as tool_norm,
+                  COUNT(*) as cnt, AVG(duration_ms) as avg_ms
+           FROM events GROUP BY tool_norm ORDER BY cnt DESC"""
     ).fetchall()
     if not rows:
         return "(sin datos)"
     lines = ["Distribución de tools:"]
     for r in rows:
-        lines.append(f"  {r['tool']}: {r['cnt']} llamadas (promedio {r['avg_ms']:.0f}ms)")
+        lines.append(f"  {r['tool_norm']}: {r['cnt']} llamadas (promedio {r['avg_ms']:.0f}ms)")
     return "\n".join(lines)
 
 
@@ -123,11 +124,12 @@ def _query_daily_activity(conn, limit):
 def _query_node_timeline(conn, limit, arg):
     if not arg:
         return "[error] Requiere --arg <slug> para node_timeline"
+    node = arg.split("/")[-1]
     rows = conn.execute(
-        """SELECT ts, tool FROM events
-           WHERE json_extract(params, '$.slug') = ?
+        """SELECT ts, tool FROM v_node_events
+           WHERE node = ?
            ORDER BY ts DESC LIMIT ?""",
-        (arg, limit),
+        (node, limit),
     ).fetchall()
     if not rows:
         return f"(sin datos para '{arg}')"
@@ -153,16 +155,16 @@ def _query_error_summary(conn, limit):
 def _query_co_visited(conn, limit, arg):
     if not arg:
         return "[error] Requiere --arg <slug> para co_visited"
+    node = arg.split("/")[-1]
     rows = conn.execute(
-        """SELECT json_extract(e2.params, '$.slug') as co_node,
+        """SELECT e2.node as co_node,
                   COUNT(DISTINCT e2.session_id) as cnt
-           FROM events e1 JOIN events e2 ON e1.session_id = e2.session_id
-           WHERE json_extract(e1.params, '$.slug') = ?
-             AND e2.tool = 'traverse'
-             AND json_extract(e2.params, '$.slug') IS NOT NULL
-             AND json_extract(e2.params, '$.slug') != ?
+           FROM v_node_events e1 JOIN v_node_events e2 ON e1.session_id = e2.session_id
+           WHERE e1.node = ?
+             AND e2.tool_norm = 'traverse'
+             AND e2.node != ?
            GROUP BY co_node ORDER BY cnt DESC LIMIT ?""",
-        (arg, arg, limit),
+        (node, node, limit),
     ).fetchall()
     if not rows:
         return f"Ningún nodo co-visitado con '{arg}' en la misma sesión."
@@ -175,9 +177,9 @@ def _query_co_visited(conn, limit, arg):
 def _query_read_ratio(conn, limit):
     rows = conn.execute(
         """SELECT node, visits,
-                  (SELECT COUNT(*) FROM events
-                   WHERE tool = 'read'
-                     AND json_extract(params, '$.slug') = v.node) as reads
+                  (SELECT COUNT(*) FROM v_node_events
+                   WHERE tool_norm = 'read'
+                     AND node = v.node) as reads
            FROM v_node_visits v
            WHERE visits >= 2
            ORDER BY CAST(reads AS FLOAT) / visits ASC LIMIT ?""",
@@ -198,12 +200,11 @@ def _query_session_diff(conn, limit, arg):
     parts = arg.split(",", 1)
     sid_a, sid_b = parts[0].strip(), parts[1].strip()
     rows = conn.execute(
-        """SELECT DISTINCT json_extract(params, '$.slug') as node
-           FROM events WHERE session_id = ? AND tool = 'traverse'
-             AND json_extract(params, '$.slug') IS NOT NULL
-             AND json_extract(params, '$.slug') NOT IN (
-               SELECT DISTINCT json_extract(params, '$.slug')
-               FROM events WHERE session_id = ? AND tool = 'traverse')
+        """SELECT DISTINCT node
+           FROM v_node_events WHERE session_id = ? AND tool_norm = 'traverse'
+             AND node NOT IN (
+               SELECT DISTINCT node
+               FROM v_node_events WHERE session_id = ? AND tool_norm = 'traverse')
            LIMIT ?""",
         (sid_a, sid_b, limit),
     ).fetchall()
@@ -217,15 +218,14 @@ def _query_session_diff(conn, limit, arg):
 
 def _query_depth_stats(conn, limit):
     rows = conn.execute(
-        """SELECT CAST(json_extract(params, '$.depth') AS INT) as depth,
-                   COUNT(*) as cnt
-           FROM events WHERE tool = 'traverse'
-             AND json_extract(params, '$.depth') IS NOT NULL
+        """SELECT depth, COUNT(*) as cnt
+           FROM v_node_events WHERE tool_norm = 'traverse'
+             AND depth IS NOT NULL
            GROUP BY depth ORDER BY depth"""
     ).fetchall()
     avg_row = conn.execute(
-        "SELECT AVG(CAST(json_extract(params, '$.depth') AS FLOAT)) as avg_depth "
-        "FROM events WHERE tool = 'traverse'"
+        "SELECT AVG(depth) as avg_depth "
+        "FROM v_node_events WHERE tool_norm = 'traverse' AND depth IS NOT NULL"
     ).fetchone()
     if not rows:
         return "(sin datos de profundidad)"
@@ -240,9 +240,8 @@ def _query_depth_stats(conn, limit):
 
 def _query_entry_points(conn, limit):
     rows = conn.execute(
-        """SELECT json_extract(params, '$.slug') as entry, COUNT(*) as cnt
-           FROM events WHERE tool = 'traverse'
-             AND json_extract(params, '$.slug') IS NOT NULL
+        """SELECT node as entry, COUNT(*) as cnt
+           FROM v_node_events WHERE tool_norm = 'traverse'
            GROUP BY entry ORDER BY cnt DESC LIMIT ?""",
         (limit,),
     ).fetchall()
