@@ -94,6 +94,7 @@ def _ensure_db() -> None:
                     ts TEXT NOT NULL,
                     tool TEXT NOT NULL,
                     params TEXT NOT NULL DEFAULT '{}',
+                    result_edges TEXT,
                     nodes_count INTEGER,
                     exit_code INTEGER,
                     error TEXT,
@@ -134,13 +135,18 @@ def _ensure_db() -> None:
                 GROUP BY node
                 ORDER BY visits DESC;
             """)
+        # Migración idempotente: tablas creadas antes de result_edges
+        try:
+            conn.execute("ALTER TABLE events ADD COLUMN result_edges TEXT")
+        except Exception:
+            pass  # columna ya existe
     except Exception:
         pass
 
 
 def _persist_sqlite(tool_name: str, params: dict, exit_code: int,
                     duration_ms: int, nodes_count: int | None = None,
-                    error: str | None = None) -> None:
+                    error: str | None = None, result_edges: list[dict] | None = None) -> None:
     """Escribe el evento a SQLite."""
     if _db_path is None or not _enabled:
         return
@@ -148,13 +154,14 @@ def _persist_sqlite(tool_name: str, params: dict, exit_code: int,
         with sqlite3.connect(str(_db_path)) as conn:
             conn.execute(
                 """INSERT INTO events
-                   (session_id, ts, tool, params, nodes_count, exit_code, error, duration_ms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (session_id, ts, tool, params, result_edges, nodes_count, exit_code, error, duration_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _get_session_id(),
                     datetime.now(timezone.utc).isoformat(),
                     tool_name,
                     json.dumps(params, ensure_ascii=False),
+                    json.dumps(result_edges, ensure_ascii=False) if result_edges else None,
                     nodes_count,
                     exit_code,
                     error,
@@ -267,6 +274,37 @@ def _extract_nodes(tool_name: str, params: dict, stdout: str) -> list[str] | Non
         return None
 
 
+def _extract_edges(tool_name: str, params: dict, stdout: str) -> list[dict] | None:
+    """Extrae aristas resultantes (result_edges) del output de traverse.
+
+    Fuente: output JSON (campo result_edges) o output textual ("via <type> ← <from>").
+    Alimenta la métrica de efectividad del anotado ontológico (matched/declared).
+    """
+    if tool_name != "okf_traverse" or not stdout:
+        return None
+    try:
+        edges: list[dict] = []
+        if params.get("json"):
+            data = json.loads(stdout)
+            edges = data.get("result_edges", []) or []
+        else:
+            # Textual: cada nodo imprime "via <edge_type>[ (score)] ← <from>"
+            # El nodo actual (to) está en la línea previa (📍/→/← + path.md)
+            last_path = None
+            for line in stdout.splitlines():
+                nm = re.match(r"\s*(?:📍|→|←)\s+(\S+\.md)", line)
+                if nm:
+                    last_path = nm.group(1)
+                    continue
+                em = re.search(r"via (\S+)(?: \([\d.]+\))?\s*←\s*(\S+\.md)", line)
+                if em and last_path:
+                    edges.append({"from": em.group(2), "to": last_path, "type": em.group(1)})
+        edges = [e for e in edges if e.get("from") and e.get("to") and e.get("type")]
+        return edges[:RESULT_NODES_CAP] or None
+    except Exception:
+        return None
+
+
 def record(tool_name: str, params: dict, exit_code: int,
            duration_ms: int, stdout: str = "", stderr: str = "") -> None:
     """Registra un evento de tool en Cognitive Trace (SQLite + JSONL).
@@ -292,6 +330,7 @@ def record(tool_name: str, params: dict, exit_code: int,
         error = stderr[:500]
 
     nodes = _extract_nodes(tool_name, params, stdout)
+    edges = _extract_edges(tool_name, params, stdout)
 
     _persist_sqlite(
         tool_name=tool_name,
@@ -300,6 +339,7 @@ def record(tool_name: str, params: dict, exit_code: int,
         duration_ms=duration_ms,
         nodes_count=len(nodes) if nodes else None,
         error=error,
+        result_edges=edges,
     )
 
     event = {
@@ -313,6 +353,8 @@ def record(tool_name: str, params: dict, exit_code: int,
     }
     if nodes:
         event["result_nodes"] = nodes
+    if edges:
+        event["result_edges"] = edges
 
     _append_jsonl(event)
 
