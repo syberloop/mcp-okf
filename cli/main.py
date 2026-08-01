@@ -102,7 +102,9 @@ def build_parser():
     sp_traverse.add_argument("--edge-type", dest="edge_type", type=str, default=None,
                              choices=["extiende", "refina", "fundamenta",
                                       "aplica", "depende", "corrige"],
-                             help="Filtrar por tipo de arista tipada")
+                             help="Declarar el tipo ontológico explorado (anotación; no filtra)")
+    sp_traverse.add_argument("--filter", action="store_true", default=False,
+                             help="Con --edge-type: excluir aristas que no son de ese tipo")
 
     # ── graph ──
     sp_graph = subparsers.add_parser("graph", help="Analizar el grafo de wikilinks")

@@ -10,7 +10,14 @@ el vecindario de un concepto sin leer N archivos completos.
 Uso:
     python3 -m cli traverse <concepto> [--depth N] [--json]
                                     [--direction both|out|in] [--no-cyber]
-                                    [--edge-type <tipo>]
+                                    [--edge-type <tipo>] [--filter]
+
+Semántica (Decisión "Cada traverse es una búsqueda ontológica", 2026-08-01):
+    --edge-type declara la intención ontológica (anotación). Por defecto NO
+    filtra: devuelve el vecindario completo etiquetado, ordenando primero las
+    aristas del tipo declarado. El superset nunca se pierde.
+    --filter convierte el edge_type en exclusión: solo aristas de ese tipo
+    (comportamiento previo, para consultas que piden un solo tipo).
 """
 
 import json
@@ -140,6 +147,7 @@ def run(args, vault, config=None):
     json_out = getattr(args, "json", False)
     no_cyber = getattr(args, "no_cyber", False)
     edge_type_filter = getattr(args, "edge_type", None)
+    filter_mode = getattr(args, "filter", False)  # --filter: edge_type excluye (default: anotación)
 
     # Construir grafo de wikilinks (ya resuelve todos los links)
     graph = build_graph(vault)
@@ -241,14 +249,18 @@ def run(args, vault, config=None):
                     if resolved_ref and resolved_ref != current_path:
                         neighbors.append((resolved_ref, "cyber.corrected_by", 0.0))
 
-        # Ordenar vecinos por score descendente (aristas más fuertes primero)
-        neighbors.sort(key=lambda x: x[2], reverse=True)
+        # Ordenar vecinos: en modo anotación, aristas del tipo declarado primero
+        # (score desc dentro de cada grupo). En modo filtro, orden por score.
+        if edge_type_filter and not filter_mode:
+            neighbors.sort(key=lambda x: (x[1] != edge_type_filter, -x[2]))
+        else:
+            neighbors.sort(key=lambda x: x[2], reverse=True)
 
         for neighbor_path, n_edge_type, n_score in neighbors:
             if neighbor_path not in visited:
-                # Aplicar filtro edge_type si está definido
-                # El nodo origen (edge_type="origin") y aristas que matchean el filtro pasan
-                if edge_type_filter:
+                # Modo filtro (explícito): excluir aristas que no matchean el tipo
+                # Modo anotación (default): el superset completo siempre entra
+                if filter_mode and edge_type_filter:
                     if n_edge_type != edge_type_filter and n_edge_type not in ("origin",):
                         continue
                 queue.append(
@@ -270,6 +282,12 @@ def run(args, vault, config=None):
             result["seeds"] = resolved_seeds
         if edge_type_filter:
             result["edge_type"] = edge_type_filter
+            result["filter"] = filter_mode
+            if not filter_mode:
+                result["matched"] = len([
+                    n for n in nodes
+                    if n["from"] is not None and n["edge_type"] == edge_type_filter
+                ])
         # Aristas resultantes para Cognitive Trace
         result["result_edges"] = [
             {"from": n["from"], "to": n["path"], "type": n["edge_type"]}
@@ -295,9 +313,16 @@ def run(args, vault, config=None):
         for w in warnings:
             print(f"   ⚠️  {w}")
 
-    # ── Sugerencia ontológica (Nivel 2): si no se usó edge_type, sugerir ──
-    if not edge_type_filter:
-        # Contar aristas tipadas atravesadas
+    # ── Resumen ontológico (modo anotación) ──
+    if edge_type_filter and not filter_mode:
+        matched = [n for n in nodes
+                   if n["from"] is not None and n["edge_type"] == edge_type_filter]
+        edges_total = len([n for n in nodes if n["from"] is not None])
+        print()
+        print(f"   🎯 Anotación: {edge_type_filter} — {len(matched)}/{edges_total} "
+              f"aristas del tipo declarado (superset completo conservado)")
+    elif not edge_type_filter:
+        # ── Sugerencia ontológica (Nivel 2): si no se usó edge_type, sugerir ──
         typed_edge_types = {n["edge_type"] for n in nodes
                             if n["edge_type"] not in ("origin", "wikilink", "backlink",
                                                        "cyber.corrects", "cyber.corrected_by")}
@@ -307,7 +332,8 @@ def run(args, vault, config=None):
             print()
             print(f"   💡 Tip: esta travesía incluye {typed_count} "
                   f"aristas tipadas ({et_list}).")
-            print(f"   Para filtrar por tipo: --edge-type <tipo>")
+            print(f"   Para anotar el tipo explorado: --edge-type <tipo>")
+            print(f"   Para filtrar (exclusión): --edge-type <tipo> --filter")
             print(f"   Ejemplo: traverse <slug> --edge-type extiende")
 
     print()

@@ -389,10 +389,15 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
 
 
 @mcp.tool()
-def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "", edge_type: str = "") -> str:
+def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "", edge_type: str = "", filter: bool = False) -> str:
     """Travesía semántica del grafo OKF. Devuelve frontmatter del concepto + vecindario (wikilinks, backlinks, cyber.corrects).
 
     USO PRIMARIO para consultar el vault. Preferir sobre search.
+
+    SEMÁNTICA ONTOLÓGICA (Decisión "Cada traverse es una búsqueda ontológica", 2026-08-01):
+    edge_type es OBLIGATORIO — declara la relación explorada (anotación). Por defecto NO
+    filtra: devuelve el vecindario completo etiquetado y ordena primero las aristas del
+    tipo declarado. Pasar filter=True solo para exclusión explícita (un solo tipo).
 
     Args:
         slug: Slug del concepto (ej: 'grafo-cibernetico-marco-teorico' o 'frameworks/tp3-cibernetico')
@@ -402,8 +407,12 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
         json_output: Si True, salida JSON para consumo programático
         seeds: Slugs separados por coma para múltiples orígenes (unión + deduplicación).
                Ej: 'frameworks/tp3-cibernetico,decisions/description-cibernetico-okf'
-        edge_type: Filtrar por tipo de arista tipada (extiende, refina, fundamenta, aplica, depende, corrige)
+        edge_type: OBLIGATORIO — tipo ontológico explorado (extiende, refina, fundamenta,
+                   aplica, depende, corrige). Anota sin filtrar.
+        filter: Si True, edge_type excluye aristas que no son de ese tipo (exclusión explícita).
     """
+    if not edge_type:
+        return "[error] traverse requiere edge_type: todo traverse es una búsqueda ontológica — declare el tipo explorado (extiende|refina|fundamenta|aplica|depende|corrige). Ver Decision 2026-08-01."
     args = ["traverse"]
     params = {"depth": depth, "direction": direction, "no_cyber": no_cyber}
 
@@ -424,9 +433,11 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
         args.append("--no-cyber")
     if json_output:
         args.append("--json")
-    if edge_type:
-        args += ["--edge-type", edge_type]
-        params["edge_type"] = edge_type
+    args += ["--edge-type", edge_type]
+    params["edge_type"] = edge_type
+    if filter:
+        args.append("--filter")
+        params["filter"] = True
     return _run(args, tool_name="okf_traverse", params=params)
 
 
