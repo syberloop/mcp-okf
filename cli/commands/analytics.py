@@ -347,63 +347,73 @@ def _query_edge_type_usage(conn, limit):
             lines.append(f"  {r['et']}: {r['cnt']}")
 
     # ── Efectividad del anotado (result_edges en telemetry, 2026-08-01+) ──
-    # matched/declared: aristas tipadas del tipo declarado / aristas tipadas totales.
-    # Separa disciplina del agente (¿anota?) de calidad del grafo (¿el tipo es correcto?).
+    # Promedio por travesía: cada traverse pesa igual (un vecindario denso no
+    # enmascara fallos de otros). Separa disciplina del agente (¿anota?) de
+    # calidad del grafo (¿el tipo es correcto?).
     eff = conn.execute(
-        f"""WITH edges AS (
-               SELECT json_extract(e.params, '$.edge_type') AS declared,
-                      je.value AS edge
+        f"""SELECT declared,
+                   AVG(1.0 * matched / NULLIF(total, 0)) * 100 AS eff_pct,
+                   SUM(total) AS total, SUM(matched) AS matched,
+                   COUNT(*) AS traverses
+           FROM (
+               SELECT e.id,
+                      json_extract(e.params, '$.edge_type') AS declared,
+                      COUNT(*) AS total,
+                      SUM(CASE WHEN json_extract(je.value, '$.type') =
+                                    json_extract(e.params, '$.edge_type')
+                               THEN 1 ELSE 0 END) AS matched
                FROM events e, json_each(e.result_edges) je
-               WHERE e.tool IN ('okf_traverse', 'traverse')
+               WHERE e.tool IN ('okf_traverse', 'traverse', 'mcp__okf__traverse')
                  AND e.result_edges IS NOT NULL
                  AND COALESCE(json_extract(e.params, '$.edge_type'), '') != ''
-           ),
-           typed AS (
-               SELECT declared, edge FROM edges
-               WHERE json_extract(edge, '$.type') IN {_EDGE_TYPES_SQL}
+                 AND json_extract(je.value, '$.type') IN {_EDGE_TYPES_SQL}
+               GROUP BY e.id
            )
-           SELECT declared, COUNT(*) AS total,
-                  SUM(CASE WHEN json_extract(edge, '$.type') = declared
-                           THEN 1 ELSE 0 END) AS matched
-           FROM typed GROUP BY declared ORDER BY total DESC"""
+           GROUP BY declared ORDER BY traverses DESC"""
     ).fetchall()
     if eff:
+        t_trav = sum(r['traverses'] for r in eff)
         t_edges = sum(r['total'] for r in eff)
         t_match = sum(r['matched'] or 0 for r in eff)
-        t_pct = t_match / t_edges * 100 if t_edges else 0
-        lines.append(f"Efectividad del anotado ({t_match}/{t_edges} = {t_pct:.0f}%):")
+        t_pct = sum((r['eff_pct'] or 0) * r['traverses'] for r in eff) / t_trav if t_trav else 0
+        lines.append(
+            f"Efectividad del anotado ({t_pct:.0f}% promedio de {t_trav} travesías, "
+            f"{t_match}/{t_edges} aristas):"
+        )
         for r in eff:
-            p = r['matched'] / r['total'] * 100 if r['total'] else 0
+            p = r['eff_pct'] or 0
             flag = "OK" if p >= 70 else "BAJA"
-            lines.append(f"  {r['declared']}: {r['matched']}/{r['total']} ({p:.0f}%) {flag}")
+            lines.append(f"  {r['declared']}: {p:.0f}% ({r['traverses']} trav, "
+                         f"{r['matched']}/{r['total']} aristas) {flag}")
         zones = conn.execute(
-            f"""WITH edges AS (
-                   SELECT json_extract(e.params, '$.edge_type') AS declared,
-                          json_extract(je.value, '$.type') AS etype,
-                          json_extract(je.value, '$.from') AS from_node
+            f"""SELECT zone,
+                       AVG(1.0 * matched / NULLIF(total, 0)) * 100 AS eff_pct,
+                       COUNT(*) AS traverses
+               FROM (
+                   SELECT e.id,
+                          CASE WHEN instr(json_extract(je.value, '$.from'), '/') > 0
+                               THEN substr(json_extract(je.value, '$.from'), 1,
+                                           instr(json_extract(je.value, '$.from'), '/') - 1)
+                               ELSE json_extract(je.value, '$.from') END AS zone,
+                          COUNT(*) AS total,
+                          SUM(CASE WHEN json_extract(je.value, '$.type') =
+                                        json_extract(e.params, '$.edge_type')
+                                   THEN 1 ELSE 0 END) AS matched
                    FROM events e, json_each(e.result_edges) je
-                   WHERE e.tool IN ('okf_traverse', 'traverse')
+                   WHERE e.tool IN ('okf_traverse', 'traverse', 'mcp__okf__traverse')
                      AND e.result_edges IS NOT NULL
                      AND COALESCE(json_extract(e.params, '$.edge_type'), '') != ''
-               ),
-               typed AS (
-                   SELECT declared, etype, from_node FROM edges
-                   WHERE etype IN {_EDGE_TYPES_SQL}
+                     AND json_extract(je.value, '$.type') IN {_EDGE_TYPES_SQL}
+                   GROUP BY e.id, zone
                )
-               SELECT CASE WHEN instr(from_node, '/') > 0
-                           THEN substr(from_node, 1, instr(from_node, '/') - 1)
-                           ELSE from_node END AS zone,
-                      COUNT(*) AS total,
-                      SUM(CASE WHEN etype = declared THEN 1 ELSE 0 END) AS matched
-               FROM typed GROUP BY zone HAVING total >= 3
-               ORDER BY total DESC LIMIT ?""",
+               GROUP BY zone HAVING COUNT(*) >= 3
+               ORDER BY COUNT(*) DESC LIMIT ?""",
             (limit,),
         ).fetchall()
         if zones:
-            lines.append("Por zona (directorio origen, >=3 aristas):")
+            lines.append("Por zona (directorio origen, >=3 travesías):")
             for r in zones:
-                p = r['matched'] / r['total'] * 100 if r['total'] else 0
-                lines.append(f"  {r['zone']}: {r['matched']}/{r['total']} ({p:.0f}%)")
+                lines.append(f"  {r['zone']}: {r['eff_pct'] or 0:.0f}% ({r['traverses']} trav)")
     else:
         lines.append("(sin datos de efectividad — requiere result_edges en telemetry, 2026-08-01+)")
     return "\n".join(lines)
