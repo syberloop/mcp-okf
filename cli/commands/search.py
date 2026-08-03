@@ -66,8 +66,13 @@ def _get_git_blame_cache(vault, relpath):
         return None
 
 
-def find_todos(vault, include_done=False, with_aging=False):
-    """Encuentra todos los - [ ] y - [x] en archivos del vault."""
+def find_todos(vault, include_done=False, with_aging=False, include_specs=False):
+    """Encuentra todos los - [ ] y - [x] en archivos del vault.
+
+    Por defecto EXCLUYE archivos con type: Spec — sus checkboxes son
+    criterios de aceptación de un diseño (definen "done"), no tareas
+    ejecutables. Pasar include_specs=True para incluirlos explícitamente.
+    """
     todos = []
     blame_cache = {}
 
@@ -83,10 +88,24 @@ def find_todos(vault, include_done=False, with_aging=False):
         fm = fm or {}
         project = _extract_project(parts)
 
+        # Criterios de aceptación de specs NO son tareas (decisión 2026-08-02)
+        if not include_specs and fm.get("type") == "Spec":
+            continue
+
         if with_aging and relpath not in blame_cache:
             blame_cache[relpath] = _get_git_blame_cache(vault, relpath)
 
+        # Ignorar checkboxes dentro de bloques de código (```) — son ejemplos,
+        # diagramas o capturas de estado, no tareas reales (fix 2026-08-02:
+        # el insight embudo-invertido mostraba el checklist del plan CRM como
+        # code block y el detector lo contaba como TODOs duplicados).
+        in_code_block = False
         for i, line in enumerate(text.split("\n"), 1):
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
             m = re.match(r'^\s*- \[([ xX])\]\s+(.+)', line)
             if m:
                 done = m.group(1) in ("x", "X")
@@ -434,7 +453,8 @@ def run(args, vault, config=None):
         return 1
 
     if todos_mode:
-        todos = find_todos(vault, include_done=include_all, with_aging=with_aging)
+        include_specs = getattr(args, "include_specs", False)
+        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs)
         agent_bus_signals = find_agent_bus_signals()
         todos.extend(agent_bus_signals)
         if json_out:
