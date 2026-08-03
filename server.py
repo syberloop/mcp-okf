@@ -548,20 +548,25 @@ def graph(command: str, arg: str = "", edge_type: str = "") -> str:
 
 
 @mcp.tool()
-def graph_suggest_edge_types(apply: bool = False) -> str:
+def graph_suggest_edge_types(apply: bool = False, min_score: float = 0.0) -> str:
     """Sugiere tipos de arista para wikilinks existentes sin tipo.
 
     Analiza todas las aristas del grafo y propone tipos semanticos
     (extiende, refina, fundamenta, aplica, depende, corrige) basandose
-    en los tipos de nodo origen y destino.
+    en los tipos de nodo origen y destino, con scoring semantico 0.0-1.0
+    (structural fit, tag overlap, description similarity, graph precedent).
 
     Args:
         apply: Si True, escribe las sugerencias de confianza ALTA en el frontmatter.
+        min_score: Score semantico minimo (0.0-1.0) para aplicar. Con apply=True,
+                   descarta sugerencias con score < min_score. Default 0.0 = sin filtro.
     """
     args = ["graph", "suggest-edge-types"]
-    params = {"command": "suggest-edge-types", "apply": apply}
+    params = {"command": "suggest-edge-types", "apply": apply, "min_score": min_score}
     if apply:
         args.append("--apply")
+    if min_score > 0:
+        args += ["--min-score", str(min_score)]
     return _run(args, tool_name="okf_graph", params=params)
 
 

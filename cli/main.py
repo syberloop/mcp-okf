@@ -121,6 +121,9 @@ def build_parser():
                           help="Con suggest-edge-types: aplicar sugerencias ALTA")
     sp_graph.add_argument("--dry-run", action="store_true", default=False,
                           help="Con suggest-edge-types --apply: previsualizar sin escribir")
+    sp_graph.add_argument("--min-score", dest="min_score", type=float, default=None,
+                          help="Con suggest-edge-types: score mínimo para aplicar "
+                               "(scoring semántico 0.0-1.0; default: config graph.suggest_min_score)")
 
     # ── health ──
     sp_health = subparsers.add_parser("health", help="Chequeo completo de salud")

@@ -81,6 +81,11 @@ DEFAULTS: dict[str, Any] = {
     "health": {
         "smoke_entry_point": "tp3-cibernetico",
     },
+    "graph": {
+        # Score semántico mínimo para aplicar sugerencias de aristas tipadas
+        # (plan scoring-semantico, 2026-07-30). 0.0 = sin filtro.
+        "suggest_min_score": 0.0,
+    },
     "exclude": {
         "files": ["index.md", "log.md", "dashboard.md"],
         "dirs": [".git", ".obsidian", "Templates", "scripts", "references", "assets"],
@@ -288,6 +293,10 @@ class Config:
     @property
     def health_smoke_entry_point(self) -> str:
         return str(self._data["health"]["smoke_entry_point"])
+
+    @property
+    def graph_suggest_min_score(self) -> float:
+        return float(self._data["graph"].get("suggest_min_score", 0.0))
 
     @property
     def exclude_files(self) -> set[str]:

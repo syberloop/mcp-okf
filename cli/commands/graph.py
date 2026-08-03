@@ -5,6 +5,7 @@ Subcomandos:
     dump, dirs, types, suggest-edge-types
 """
 
+import re
 import sys
 from collections import defaultdict, deque
 from pathlib import Path
@@ -700,7 +701,70 @@ def _cmd_impact(graph, filename, vault=None):
     return "\n".join(lines)
 
 
-def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
+def _insert_link_entry(fm_text: str, target: str, edge_type: str) -> str:
+    """Inserta una entrada links: en el frontmatter sin romper bloques anidados.
+
+    Maneja el caso de frontmatter con bloque cyber: u otros bloques anidados
+    después de links:. Inserta la entrada dentro del bloque links: existente
+    (si existe) o crea el bloque links: ANTES de cyber: (si existe) o al final.
+
+    Bug corregido 2026-08-03: la inserción ingenua (fm_text.rstrip() + entrada)
+    agregaba la entrada DENTRO del bloque cyber cuando links: ya existía,
+    rompiendo el YAML (par atípico 'expected block end, but found -').
+    """
+    entry = f"  - target: {target}\n    type: {edge_type}"
+
+    # Buscar bloque links: a nivel raíz (línea que empieza con 'links:' sin indentar)
+    lines = fm_text.split("\n")
+    links_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r"^links:\s*$", line):
+            links_idx = i
+            break
+
+    if links_idx is not None:
+        # Encontrar el final del bloque links (próxima clave a nivel raíz)
+        end_idx = len(lines)
+        for j in range(links_idx + 1, len(lines)):
+            # Línea no vacía y sin indentación = nueva clave raíz
+            if lines[j].strip() and not lines[j].startswith((" ", "\t")):
+                end_idx = j
+                break
+            # Línea vacía seguida de clave raíz → fin de bloque
+            if not lines[j].strip():
+                # Mirar si la siguiente no vacía es clave raíz
+                for k in range(j + 1, len(lines)):
+                    if not lines[k].strip():
+                        continue
+                    if not lines[k].startswith((" ", "\t")):
+                        end_idx = k
+                    break
+                if end_idx != len(lines):
+                    break
+        # Insertar la entrada antes de end_idx, sin duplicar si ya existe
+        for j in range(links_idx + 1, end_idx):
+            if lines[j].strip() == f"- target: {target}":
+                return fm_text  # ya existe — no duplicar
+        lines.insert(end_idx, entry)
+        return "\n".join(lines)
+
+    # No hay links: — crear el bloque antes de cyber: (si existe) o al final
+    cyber_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r"^cyber:\s*$", line):
+            cyber_idx = i
+            break
+    if cyber_idx is not None:
+        lines.insert(cyber_idx, "links:")
+        lines.insert(cyber_idx + 1, entry)
+    else:
+        lines.append("links:")
+        lines.append(entry)
+    return "\n".join(lines)
+
+
+def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
+                            min_score=0.0):
     """Sugiere tipos de arista para wikilinks existentes sin tipo.
 
     Algoritmo:
@@ -709,8 +773,10 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
        del frontmatter y llama suggest_edge_type().
     3. Clasifica por confianza (ALTA, MEDIA, BAJA).
     4. Con --apply, escribe solo las de confianza ALTA en el frontmatter.
+    5. Con --min-score N, solo aplica/escribe aristas con score >= N
+       (scoring semántico 0.0-1.0, plan scoring-semantico).
     """
-    from cli.edge_types import suggest_edge_type
+    from cli.edge_types import suggest_edge_type, score_edge
     from cli.frontmatter import parse_frontmatter
 
     suggestions = {"ALTA": [], "MEDIA": [], "BAJA": []}
@@ -741,9 +807,11 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
 
             target_file = vault / target_path
             target_type = "?"
+            target_fm = None
             try:
                 t_text = target_file.read_text(encoding="utf-8")
                 t_fm, _ = parse_frontmatter(t_text)
+                target_fm = t_fm
                 if t_fm and t_fm.get("type"):
                     target_type = str(t_fm["type"])
             except Exception:
@@ -787,10 +855,38 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
                         confidence = "ALTA"
                         break
 
+            # Scoring semántico (plan scoring-semantico): score 0.0-1.0
+            # con 4 señales. Se calcula con el frontmatter real de ambos nodos.
+            # precedent_ratio=0.0: para aristas SUGERIDAS no hay precedente
+            # tipado aún (el tipo se está proponiendo), build_graph lo calcula
+            # para aristas ya existentes.
+            src_tags = source_fm.get("tags", []) if source_fm else []
+            tgt_tags = target_fm.get("tags", []) if target_fm else []
+            if isinstance(src_tags, str):
+                src_tags = [t.strip() for t in src_tags.strip("[]").split(",") if t.strip()]
+            if isinstance(tgt_tags, str):
+                tgt_tags = [t.strip() for t in tgt_tags.strip("[]").split(",") if t.strip()]
+            if not isinstance(src_tags, list):
+                src_tags = []
+            if not isinstance(tgt_tags, list):
+                tgt_tags = []
+
+            edge_score = score_edge(
+                source_type=source_type,
+                target_type=target_type,
+                edge_type=suggested_type,
+                source_tags=src_tags,
+                target_tags=tgt_tags,
+                source_desc=str(source_fm.get("description", "")) if source_fm else "",
+                target_desc=str(target_fm.get("description", "")) if target_fm else "",
+                precedent_ratio=0.0,
+            )
+
             suggestions[confidence].append({
                 "source": source_path,
                 "target": target_path,
                 "suggested_type": suggested_type,
+                "score": edge_score,
             })
 
     # --- Output ---
@@ -803,16 +899,31 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
         items = suggestions[conf]
         if not items:
             continue
+        # Rankear por score descendente dentro de cada bucket
+        items = sorted(items, key=lambda x: x["score"], reverse=True)
         lines.append(f"=== {conf} ({len(items)} aristas) ===")
         for item in items:
+            score_str = f" [score: {item['score']:.2f}]" if min_score > 0 else ""
             lines.append(
-                f"  {item['source']} → {item['target']}: {item['suggested_type']}"
+                f"  {item['source']} → {item['target']}: {item['suggested_type']}{score_str}"
             )
         lines.append("")
 
     if apply:
         apply_count = 0
-        for item in suggestions["ALTA"]:
+        skipped_score = 0
+        # Sin --min-score: solo ALTA (compat con contrato histórico).
+        # Con --min-score: TODAS las sugerencias que pasen el umbral semántico
+        # (plan scoring-semantico: rankear por score, aplicar por umbral).
+        if min_score > 0:
+            all_sug = (
+                suggestions["ALTA"] + suggestions["MEDIA"] + suggestions["BAJA"]
+            )
+            candidates = [it for it in all_sug if it["score"] >= min_score]
+            skipped_score = len(all_sug) - len(candidates)
+        else:
+            candidates = suggestions["ALTA"]
+        for item in candidates:
             source_file = vault / item["source"]
             try:
                 content = source_file.read_text(encoding="utf-8")
@@ -831,12 +942,9 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
             fm_text = content[3:end_fm]
             after_fm = content[end_fm:]
 
-            link_entry = f"\n  - target: {item['target']}\n    type: {item['suggested_type']}"
-
-            if "links:" in fm_text:
-                new_fm = fm_text.rstrip() + link_entry
-            else:
-                new_fm = fm_text.rstrip() + "\nlinks:" + link_entry
+            new_fm = _insert_link_entry(
+                fm_text, item["target"], item["suggested_type"]
+            )
 
             new_content = f"---\n{new_fm}{after_fm}"
 
@@ -844,7 +952,19 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False):
                 source_file.write_text(new_content, encoding="utf-8")
             apply_count += 1
 
-        lines.append(f"\n{'DRY-RUN: ' if dry_run else ''}Aplicadas {apply_count} sugerencias ALTA.")
+        if min_score > 0:
+            lines.append(
+                f"\n{'DRY-RUN: ' if dry_run else ''}Aplicadas {apply_count} sugerencias "
+                f"con score >= {min_score:.2f}."
+            )
+        else:
+            lines.append(
+                f"\n{'DRY-RUN: ' if dry_run else ''}Aplicadas {apply_count} sugerencias ALTA."
+            )
+        if skipped_score and min_score > 0:
+            lines.append(
+                f"  (descartadas {skipped_score} con score < {min_score:.2f})"
+            )
         if not dry_run:
             lines.append("⚠️  Revisa los cambios con git diff antes de commitear.")
 
@@ -858,6 +978,12 @@ def run(args, vault, config=None):
     edge_type = getattr(args, "edge_type", None)
     apply_flag = getattr(args, "apply", False)
     dry_run_flag = getattr(args, "dry_run", False)
+    min_score = getattr(args, "min_score", None)
+    if min_score is None:
+        # Default desde config (plan scoring-semantico: umbral configurable)
+        min_score = (
+            config.graph_suggest_min_score if config is not None else 0.0
+        )
 
     if not subcommand:
         # Default: dump
@@ -869,7 +995,8 @@ def run(args, vault, config=None):
     if subcommand == "suggest-edge-types":
         graph = build_graph(vault)
         print(_cmd_suggest_edge_types(
-            vault, graph, apply=apply_flag, dry_run=dry_run_flag
+            vault, graph, apply=apply_flag, dry_run=dry_run_flag,
+            min_score=min_score
         ))
         return 0
 

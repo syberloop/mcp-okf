@@ -204,31 +204,35 @@ def _check_edge_type_consistency(filepath, vault):
     """Detecta inconsistencias en aristas tipadas del campo links:.
 
     Verifica:
-    - Edge types no reconocidos
-    - Exclusión mutua: mismo target con extiende Y refina
-    - corrige sin target deprecado ni cyber.corrected_by
+    - Edge types no reconocidos (ERROR — bloqueante)
+    - Exclusión mutua: mismo target con extiende Y refina (ERROR)
+    - corrige sin target deprecado ni cyber.corrected_by (ERROR)
+    - Par atípico (via validate_cross_type_pair) con score semántico
+      (WARNING — informativo, plan scoring-semantico: priorizados por score)
 
     Returns:
-        list[str]: Lista de errores encontrados.
+        tuple[list[str], list[str]]: (errors, warnings).
     """
-    from cli.edge_types import VALID_EDGE_TYPES
+    from cli.edge_types import VALID_EDGE_TYPES, validate_cross_type_pair, score_edge
     from cli.frontmatter import parse_frontmatter
 
     errors = []
+    warnings = []
     try:
         text = filepath.read_text(encoding="utf-8")
     except Exception:
-        return errors
+        return errors, warnings
 
     fm, _ = parse_frontmatter(text)
     if fm is None:
-        return errors
+        return errors, warnings
 
     links = fm.get("links")
     if not isinstance(links, list):
-        return errors
+        return errors, warnings
 
     rel = str(filepath.relative_to(vault))
+    src_type = str(fm.get("type", ""))
 
     types_per_target = {}
     for link in links:
@@ -268,6 +272,45 @@ def _check_edge_type_consistency(filepath, vault):
                 except Exception:
                     pass
 
+        # Par atípico con score semántico: WARNING no bloqueante.
+        # Aristas históricas pueden tener pares fuera de valid_pairs sin
+        # romper el commit; el score (0.0-1.0) prioriza la revisión.
+        target_file = vault / target
+        tgt_type = "?"
+        tgt_fm = None
+        try:
+            t_text = target_file.read_text(encoding="utf-8")
+            tgt_fm, _ = parse_frontmatter(t_text)
+            if tgt_fm and tgt_fm.get("type"):
+                tgt_type = str(tgt_fm["type"])
+        except Exception:
+            pass
+
+        pair_warnings = validate_cross_type_pair(src_type, tgt_type, edge_type)
+        if pair_warnings:
+            src_tags = fm.get("tags", [])
+            tgt_tags = tgt_fm.get("tags", []) if tgt_fm else []
+            if isinstance(src_tags, str):
+                src_tags = [t.strip() for t in src_tags.strip("[]").split(",") if t.strip()]
+            if isinstance(tgt_tags, str):
+                tgt_tags = [t.strip() for t in tgt_tags.strip("[]").split(",") if t.strip()]
+            if not isinstance(src_tags, list):
+                src_tags = []
+            if not isinstance(tgt_tags, list):
+                tgt_tags = []
+            s = score_edge(
+                source_type=src_type,
+                target_type=tgt_type,
+                edge_type=edge_type,
+                source_tags=src_tags,
+                target_tags=tgt_tags,
+                source_desc=str(fm.get("description", "")),
+                target_desc=str(tgt_fm.get("description", "")) if tgt_fm else "",
+                precedent_ratio=0.0,
+            )
+            for w in pair_warnings:
+                warnings.append(f"  {w} [score: {s:.2f}]")
+
     for target, types in types_per_target.items():
         if "extiende" in types and "refina" in types:
             errors.append(
@@ -275,7 +318,7 @@ def _check_edge_type_consistency(filepath, vault):
                 f"'extiende' y 'refina' simultáneos"
             )
 
-    return errors
+    return errors, warnings
 
 
 def _validate_file(filepath, vault):
@@ -361,9 +404,15 @@ def _validate_file(filepath, vault):
         all_errors.append(f"wikilinks apuntan a archivos inexistentes:\n" + "\n".join(broken))
 
     # ── Validación 7: Consistencia de aristas tipadas ──
-    edge_errors = _check_edge_type_consistency(filepath, vault)
+    edge_errors, edge_warnings = _check_edge_type_consistency(filepath, vault)
     if edge_errors:
         all_errors.append(f"inconsistencias en links tipados:\n" + "\n".join(edge_errors))
+    if edge_warnings:
+        # Warnings no bloqueantes (plan scoring-semantico: par atípico
+        # priorizado por score) — se reportan a stderr sin abortar.
+        print(f"⚠️  {rel}:", file=sys.stderr)
+        for w in edge_warnings:
+            print(w, file=sys.stderr)
 
     if all_errors:
         return False, f"{rel}: " + "; ".join(all_errors)
