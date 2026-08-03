@@ -492,7 +492,8 @@ def run(args, vault, config=None):
         concepts = filtered
 
     if review_due:
-        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        from datetime import timedelta
+        today_str = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%d")  # Colombia UTC-5
         filtered = []
         for c in concepts:
             cyber = c.get("cyber")

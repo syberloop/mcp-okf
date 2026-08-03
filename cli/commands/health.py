@@ -310,7 +310,8 @@ def _check_git_hook(vault):
 # ── Check 7: Bloque cyber ──
 
 def _check_cyber(vault, excluded_cyber=None):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    from datetime import timedelta
+    today = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%d")  # Colombia UTC-5, no UTC
     if excluded_cyber is None:
         excluded_cyber = EXCLUDED_CYBER_TYPES
     ok, warnings, errors = 0, [], []

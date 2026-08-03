@@ -11,7 +11,14 @@ from cli.vault import find_md_files
 
 
 def get_today_str():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    """'Hoy' en la zona del dominio (Colombia, UTC-5), no en UTC.
+
+    Fix 2026-08-02: comparar review_on contra UTC adelantaba las
+    vencimientos entre 19:00 y 24:00 hora local (UTC ya estaba en el
+    día siguiente) — un review_on de mañana aparecía vencido hoy.
+    """
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%d")
 
 
 def collect_due(vault):
