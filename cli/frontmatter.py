@@ -1,14 +1,14 @@
-"""Parseo de frontmatter YAML.
+"""Frontmatter YAML parsing.
 
-Responsabilidades:
-- Extraer y parsear el bloque YAML del frontmatter de un archivo .md
-- Validar campos requeridos (type, description)
-- Extraer tags normalizadas
-- Incrementar contador reads
-- Normalizar tags string↔lista
+Responsibilities:
+- Extract and parse the YAML frontmatter block from a .md file
+- Validate required fields (type, description)
+- Extract normalized tags
+- Increment reads counter
+- Normalize string↔list tags
 
-Campos reconocidos (OKF v0.1):
-  type (requerido), description (requerido), title, tags, timestamp,
+Recognized fields (OKF v0.1):
+  type (required), description (required), title, tags, timestamp,
   resource, status, reads, leaf, cyber, okf_version
 """
 
@@ -17,15 +17,15 @@ from pathlib import Path
 
 
 def parse_frontmatter(text):
-    """Extrae y parsea frontmatter YAML. Intenta PyYAML, fallback a regex.
+    """Extracts and parses YAML frontmatter. Tries PyYAML, fallback to regex.
 
     Args:
-        text: Contenido completo del archivo .md.
+        text: Full content of the .md file.
 
     Returns:
         tuple[dict|None, str|None]: (fields_dict, raw_fm_text)
-        - fields_dict: dict con los campos parseados, o None si no hay frontmatter.
-        - raw_fm_text: texto crudo del frontmatter (sin delimitadores), o None.
+        - fields_dict: dict with parsed fields, or None if no frontmatter.
+        - raw_fm_text: raw frontmatter text (without delimiters), or None.
     """
     if not text.startswith("---"):
         return None, None
@@ -65,38 +65,38 @@ def parse_frontmatter(text):
 
 
 def validate_frontmatter(fields):
-    """Valida que el frontmatter tenga los campos requeridos.
+    """Validates that the frontmatter has the required fields.
 
     Args:
-        fields: dict del frontmatter parseado.
+        fields: Parsed frontmatter dict.
 
     Returns:
-        list[str]: Lista de errores (vacía = todo ok).
+        list[str]: List of errors (empty = all ok).
     """
     errors = []
     if not fields:
-        return ["sin frontmatter o YAML inválido"]
+        return ["No frontmatter or invalid YAML"]
 
     if not fields.get("type"):
-        errors.append("falta 'type' (OKF requerido)")
+        errors.append("missing 'type' (OKF required)")
 
     desc = fields.get("description")
     if not desc or not str(desc).strip():
-        errors.append("falta 'description' (política del vault)")
+        errors.append("missing 'description' (vault policy)")
     elif isinstance(desc, str) and len(desc) > 2000:
-        errors.append(f"description excede 2000 chars ({len(desc)}) — probable corrupción")
+        errors.append(f"description exceeds 2000 chars ({len(desc)}) — likely corruption")
 
     return errors
 
 
 def extract_tags(md_path):
-    """Extrae tags del frontmatter de un archivo. Sin dependencia de PyYAML.
+    """Extracts tags from a file's frontmatter. No PyYAML dependency.
 
     Args:
-        md_path: Path al archivo .md.
+        md_path: Path to .md file.
 
     Returns:
-        list[str]: Lista de tags normalizada.
+        list[str]: Normalized tag list.
     """
     try:
         text = md_path.read_text(encoding="utf-8")
@@ -133,10 +133,10 @@ def extract_tags(md_path):
 
 
 def normalize_tags(tags_value):
-    """Convierte cualquier representación de tags a lista de strings.
+    """Converts any tag representation to a list of strings.
 
     Args:
-        tags_value: Puede ser str ("tag1, tag2"), list, o None.
+        tags_value: Can be str ("tag1, tag2"), list, or None.
 
     Returns:
         list[str]
@@ -155,13 +155,13 @@ def normalize_tags(tags_value):
 
 
 def increment_reads(filepath):
-    """Incrementa o crea el campo reads en el frontmatter de un archivo.
+    """Increments or creates the reads field in a file's frontmatter.
 
     Args:
-        filepath: Path al archivo .md.
+        filepath: Path to .md file.
 
     Returns:
-        int: Nuevo valor del contador (0 si falló).
+        int: New value of the counter (0 if failed).
     """
     try:
         content = filepath.read_text(encoding="utf-8")
@@ -199,14 +199,14 @@ def increment_reads(filepath):
 
 
 def extract_typed_links(md_path):
-    """Extrae aristas tipadas del campo 'links:' en el frontmatter.
+    """Extracts typed edges from the 'links:' field in frontmatter.
 
     Args:
-        md_path: Path al archivo .md.
+        md_path: Path to .md file.
 
     Returns:
-        list[dict]: Lista de {"target": str, "type": str}.
-        Lista vacía si no hay campo 'links:' o el frontmatter está mal formado.
+        list[dict]: List of {"target": str, "type": str}.
+        Empty list if there is no 'links:' field or frontmatter is malformed.
     """
     try:
         text = md_path.read_text(encoding="utf-8")
@@ -232,22 +232,22 @@ def extract_typed_links(md_path):
 
 
 def validate_cross_type(source_type, source_path, links, vault, graph):
-    """Validación cross-type no bloqueante para aristas tipadas.
+    """Non-blocking cross-type validation for typed edges.
 
-    Verifica que los pares (type_origen, type_destino, edge_type) sean
-    semánticamente válidos según EDGE_TYPE_DEFINITIONS. También detecta
-    exclusión mutua (extiende + refina mismo target) y corrige sin target
-    deprecado.
+    Verifies that (source_type, target_type, edge_type) pairs are
+    semantically valid per EDGE_TYPE_DEFINITIONS. Also detects
+    mutual exclusion (extiende + refina same target) and corrige without
+    deprecated target.
 
     Args:
-        source_type: Type del nodo origen (str).
-        source_path: Path relativo del nodo origen (str).
-        links: Lista de dicts {"target": str, "type": str}.
-        vault: Path al vault root.
-        graph: Grafo construido con build_graph().
+        source_type: Type of the source node (str).
+        source_path: Relative path of the source node (str).
+        links: List of dicts {"target": str, "type": str}.
+        vault: Path to vault root.
+        graph: Graph built with build_graph().
 
     Returns:
-        list[str]: Lista de warnings (vacía = todo OK).
+        list[str]: List of warnings (empty = all OK).
     """
     from cli.edge_types import validate_cross_type_pair, EDGE_TYPE_DEFINITIONS
 
@@ -285,13 +285,13 @@ def validate_cross_type(source_type, source_path, links, vault, graph):
         }
         if edge_type == "extiende" and "refina" in other_types:
             warnings.append(
-                f"links: {source_path} → {target_path}: exclusión mutua — "
-                f"'extiende' y 'refina' en el mismo par"
+                f"links: {source_path} → {target_path}: mutual exclusion — "
+                f"'extiende' and 'refina' on the same pair"
             )
         if edge_type == "refina" and "extiende" in other_types:
             warnings.append(
-                f"links: {source_path} → {target_path}: exclusión mutua — "
-                f"'extiende' y 'refina' en el mismo par"
+                f"links: {source_path} → {target_path}: mutual exclusion — "
+                f"'extiende' and 'refina' on the same pair"
             )
 
         # corrige sin target deprecado ni corrected_by
@@ -308,9 +308,9 @@ def validate_cross_type(source_type, source_path, links, vault, graph):
                     )
                     if "deprec" not in status.lower() and not has_corrected_by:
                         warnings.append(
-                            f"links: {source_path} corrige a '{target_path}' "
-                            f"pero el target no está marcado como deprecado "
-                            f"ni tiene cyber.corrected_by."
+                            f"links: {source_path} corrects '{target_path}' "
+                            f"but the target is not marked as deprecated "
+                            f"nor has cyber.corrected_by."
                         )
             except Exception:
                 pass

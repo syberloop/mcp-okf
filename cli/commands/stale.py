@@ -1,22 +1,22 @@
-"""Comando stale — Detector de obsolescencia semántica.
+"""Command stale — Semantic staleness detector.
 
-Escanea conceptos del vault en busca de señales de obsolescencia:
-conceptos con formato válido pero desconectados de la realidad actual.
+Scans vault concepts for staleness signals:
+concepts with valid format but disconnected from current reality.
 
-Señales:
-  1. timestamp > 90 días        → contenido estancado
-  2. reads = 0                  → nadie lo consulta
-  3. status: propuesta > 30 días → decisión fantasma
-  4. sin backlinks              → huérfano en el grafo
-  5. sin commits > 6 meses      → sin mantenimiento
-  6. type: Decision sin status  → decisión sin cierre
-  7. description vs body        → la description describe problemas
-     que el body ya resolvió (checkboxes [x] > 70%)
+Signals:
+  1. timestamp > 90 days        → stale content
+  2. reads = 0                  → nobody consults it
+  3. status: proposal > 30 days → phantom decision
+  4. no backlinks               → orphan in the graph
+  5. no commits > 6 months      → unmaintained
+  6. type: Decision no status   → decision without closure
+  7. description vs body        → description describes problems
+     that the body already solved (checkboxes [x] > 70%)
 
-Clasificación:
-  🔴 STALE     — 3+ señales
-  🟡 ATENCIÓN  — 1-2 señales
-  🟢 FRESCO    — 0 señales
+Classification:
+  🔴 STALE     — 3+ signals
+  🟡 ATTENTION — 1-2 signals
+  🟢 FRESH     — 0 signals
 """
 
 import json
@@ -35,7 +35,7 @@ def get_today():
 
 
 def days_ago(date_str, today=None):
-    """Calcula días transcurridos desde una fecha ISO."""
+    """Calculates days elapsed since an ISO date."""
     if today is None:
         today = get_today()
     try:
@@ -48,7 +48,7 @@ def days_ago(date_str, today=None):
 
 
 def git_last_commit_date(filepath, vault):
-    """Fecha del último commit que tocó este archivo. None si no hay commits."""
+    """Date of the last commit that touched this file. None if no commits."""
     try:
         result = subprocess.run(
             ["git", "-C", str(vault), "log", "-1", "--format=%aI", "--", str(filepath.relative_to(vault))],
@@ -62,7 +62,7 @@ def git_last_commit_date(filepath, vault):
 
 
 def count_checkboxes(text):
-    """Cuenta checkboxes [x] y [ ] en el body (post-frontmatter)."""
+    """Counts [x] and [ ] checkboxes in the body (post-frontmatter)."""
     if text.startswith("---"):
         end = text.find("\n---\n", 3)
         if end == -1:
@@ -81,12 +81,12 @@ def count_checkboxes(text):
 
 
 def has_problem_language(description, patterns=None):
-    """Detecta si la description habla de problemas en tiempo presente.
+    """Detects whether the description talks about problems in present tense.
 
     Args:
-        description: texto de la description.
-        patterns: lista de regex patterns (case-insensitive). Si es None,
-                  usa los defaults embebidos (español).
+        description: description text.
+        patterns: list of regex patterns (case-insensitive). If None,
+                  uses the embedded defaults (Spanish).
     """
     if patterns is None:
         patterns = [
@@ -113,7 +113,7 @@ def has_problem_language(description, patterns=None):
 
 
 def build_backlinks_index(vault):
-    """Construye índice de backlinks: {target_filename: [source_relpaths]}."""
+    """Builds backlinks index: {target_filename: [source_relpaths]}."""
     index = {}
     name_index = {}  # filename → relpath
     for f in find_md_files(vault):
@@ -156,7 +156,7 @@ def build_backlinks_index(vault):
 def collect_stale(vault, timestamp_days=90, propuesta_days=30,
                   no_commits_days=180, checkbox_ratio=0.7,
                   problem_patterns=None):
-    """Escanea todos los conceptos y evalúa señales de obsolescencia."""
+    """Scans all concepts and evaluates staleness signals."""
     today = get_today()
     backlinks = build_backlinks_index(vault)
     results = []
@@ -194,37 +194,37 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
             if ts:
                 age = days_ago(str(ts), today)
                 if age is not None and age > propuesta_days:
-                    signals.append(f"propuesta sin resolver ({age}d)")
+                    signals.append(f"proposal unresolved ({age}d)")
             else:
-                signals.append("propuesta sin timestamp")
+                signals.append("proposal missing timestamp")
 
         # ── Señal 4: sin backlinks ──
         if rel not in backlinks or len(backlinks[rel]) == 0:
             # Excluir conceptos raíz que son naturalmente huérfanos
             concept_type = str(fm.get("type", ""))
             if concept_type not in ("MarcoTeorico", "Spec", "Tool", "Agente", "Sesion"):
-                signals.append("sin backlinks")
+                signals.append("no backlinks")
 
         # ── Señal 5: sin commits ──
         last_commit = git_last_commit_date(f, vault)
         if last_commit:
             commit_age = days_ago(last_commit, today)
             if commit_age is not None and commit_age > no_commits_days:
-                signals.append(f"sin commits ({commit_age}d)")
+                signals.append(f"no commits ({commit_age}d)")
                 details["commit_age_days"] = commit_age
         else:
-            signals.append("sin commits (nuevo?)")
+            signals.append("no commits (new?)")
 
         # ── Señal 6: type Decision sin status ──
         if str(fm.get("type", "")) == "Decision" and not fm.get("status"):
-            signals.append("decisión sin status")
+            signals.append("decision without status")
 
         # ── Señal 7: description vs body inconsistency ──
         description = str(fm.get("description", ""))
         if has_problem_language(description, patterns=problem_patterns):
             completed, pending, total = count_checkboxes(text)
             if total >= 3 and completed / total >= checkbox_ratio:
-                signals.append(f"desc desactualizada ({completed}/{total} tasks ✓)")
+                signals.append(f"outdated desc ({completed}/{total} tasks ✓)")
                 details["tasks_completed"] = f"{completed}/{total}"
 
         # ── Clasificar ──
@@ -233,10 +233,10 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
             level = "STALE"
             icon = "🔴"
         elif count >= 1:
-            level = "ATENCIÓN"
+            level = "ATTENTION"
             icon = "🟡"
         else:
-            level = "FRESCO"
+            level = "FRESH"
             icon = "🟢"
 
         results.append({
@@ -251,14 +251,14 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
         })
 
     # Ordenar: STALE primero, luego ATENCIÓN, luego FRESCO
-    priority = {"STALE": 0, "ATENCIÓN": 1, "FRESCO": 2}
+    priority = {"STALE": 0, "ATTENTION": 1, "FRESH": 2}
     results.sort(key=lambda r: (priority.get(r["level"], 9), r["file"]))
 
     return results
 
 
 def run(args, vault, config=None):
-    """Ejecuta el detector de obsolescencia."""
+    """Runs the staleness detector."""
     json_out = getattr(args, "json", False)
 
     # Umbrales desde config o defaults
@@ -276,24 +276,24 @@ def run(args, vault, config=None):
         return 0
 
     stale = [r for r in results if r["level"] == "STALE"]
-    atencion = [r for r in results if r["level"] == "ATENCIÓN"]
-    fresco = [r for r in results if r["level"] == "FRESCO"]
+    atencion = [r for r in results if r["level"] == "ATTENTION"]
+    fresco = [r for r in results if r["level"] == "FRESH"]
 
     total = len(results)
 
-    print(f"🕵️ Detector de Obsolescencia — {get_today().strftime('%Y-%m-%d')}")
+    print(f"🕵️ Staleness Detector — {get_today().strftime('%Y-%m-%d')}")
     print("═" * 60)
 
     if not stale and not atencion:
-        print(f"\n✅ Todo FRESCO — {total} concepto(s) sin señales de obsolescencia.")
-        print("\n── FRESCO ──")
+        print(f"\n✅ All FRESH — {total} concept(s) with no staleness signals.")
+        print("\n── FRESH ──")
         for r in fresco:
             print(f"   🟢 [{r['type']}] {r['file']}")
         return 0
 
     # ── STALE ──
     if stale:
-        print(f"\n🔴 STALE — {len(stale)} concepto(s) con 3+ señales")
+        print(f"\n🔴 STALE — {len(stale)} concept(s) with 3+ signals")
         print("─" * 60)
         for r in stale:
             print(f"\n   📄 [{r['type']}] {r['file']}")
@@ -303,7 +303,7 @@ def run(args, vault, config=None):
 
     # ── ATENCIÓN ──
     if atencion:
-        print(f"\n🟡 ATENCIÓN — {len(atencion)} concepto(s) con 1-2 señales")
+        print(f"\n🟡 ATTENTION — {len(atencion)} concept(s) with 1-2 signals")
         print("─" * 60)
         for r in atencion:
             print(f"\n   📄 [{r['type']}] {r['file']}")
@@ -313,12 +313,12 @@ def run(args, vault, config=None):
 
     # ── FRESCO ──
     if fresco:
-        print(f"\n🟢 FRESCO — {len(fresco)} concepto(s) sin señales")
+        print(f"\n🟢 FRESH — {len(fresco)} concept(s) with no signals")
         for r in fresco:
             print(f"   🟢 [{r['type']}] {r['file']}")
 
     # ── Resumen ──
     print(f"\n{'═' * 60}")
-    print(f"🔴{len(stale)} 🟡{len(atencion)} 🟢{len(fresco)}  — {total} concepto(s) analizado(s)")
+    print(f"🔴{len(stale)} 🟡{len(atencion)} 🟢{len(fresco)}  — {total} concept(s) analyzed")
 
     return 1 if stale else 0

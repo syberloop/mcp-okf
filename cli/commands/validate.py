@@ -1,20 +1,20 @@
-"""Comando validate — Validación estricta pre-commit.
+"""Command validate — Strict pre-commit validation.
 
-Valida que:
-1. yaml.safe_load() parsea el frontmatter sin errores
-2. Campos obligatorios (type, description, timestamp) presentes y no vacíos
-3. Wikilinks no están envueltos en backticks (Obsidian los rompe)
-4. Wikilinks están sintácticamente completos ([[ debe tener su cierre ]])
-5. Wikilinks con alias (|) dentro de tablas escapan la pipe con \|
-6. Wikilinks apuntan a archivos que existen (no links rotos)
+Validates that:
+1. yaml.safe_load() parses the frontmatter without errors
+2. Required fields (type, description, timestamp) are present and non-empty
+3. Wikilinks are not wrapped in backticks (Obsidian breaks them)
+4. Wikilinks are syntactically complete ([[ must have its closing ]])
+5. Wikilinks with alias (|) inside tables escape the pipe with \\|
+6. Wikilinks point to existing files (no broken links)
 
-A diferencia de parse_frontmatter, NO tiene fallback de regex.
-Si el YAML está roto, falla.
+Unlike parse_frontmatter, it has NO regex fallback.
+If the YAML is broken, it fails.
 
-Uso:
-    python3 -m cli validate              # valida archivos staged en git
-    python3 -m cli validate <archivo>    # valida un archivo específico
-    python3 -m cli validate --all         # valida todos los conceptos
+Usage:
+    python3 -m cli validate              # validates git staged files
+    python3 -m cli validate <file>       # validates a specific file
+    python3 -m cli validate --all         # validates all concepts
 """
 
 import re
@@ -24,14 +24,14 @@ from cli.vault import find_md_files, EXCLUDE_FILES
 
 
 def _extract_body(text, fm_end):
-    """Extrae el body del archivo, excluyendo el frontmatter.
+    """Extracts the file body, excluding the frontmatter.
 
     Args:
-        text: Contenido completo del archivo.
-        fm_end: Índice donde termina el frontmatter (---).
+        text: Full file content.
+        fm_end: Index where the frontmatter ends (---).
 
     Returns:
-        str: Body del archivo.
+        str: File body.
     """
     body = text[fm_end:]
     if body.startswith("\n---"):
@@ -40,108 +40,108 @@ def _extract_body(text, fm_end):
 
 
 def _check_wikilinks_in_backticks(body, rel):
-    """Detecta wikilinks envueltos en backticks en el body.
+    """Detects wikilinks wrapped in backticks in the body.
 
-    Patrones detectados:
-    - `[[concepto]]` — wikilink dentro de código inline (NO es un enlace en Obsidian)
-    - ```[[concepto]]``` dentro de bloque de código (ignorado)
+    Detected patterns:
+    - `[[concept]]` — wikilink inside inline code (NOT a link in Obsidian)
+    - ```[[concept]]``` inside a code block (ignored)
 
     Returns:
-        list[str]: Lista de líneas con backtick-wikilinks encontrados.
+        list[str]: List of lines with backtick-wikilinks found.
     """
     errors = []
 
-    # Eliminar bloques de código fenced (```...```) para evitar falsos positivos
+    # Remove fenced code blocks (```...```) to avoid false positives
     clean = re.sub(r'```[\s\S]*?```', '', body)
 
     for i, line in enumerate(clean.split("\n"), 1):
-        # Solo detectar patrón exacto: `[[...]]` o `[[...|alias]]`
-        # Backtick inmediatamente ANTES de [[ y después de ]]
+        # Only detect exact pattern: `[[...]]` or `[[...|alias]]`
+        # Backtick immediately BEFORE [[ and after ]]
         if re.search(r'`\[\[[^]]+\]\](?:\[[^]]+\]\])?`', line):
-            # Mostrar fragmento
+            # Show fragment
             match = re.search(r'(`\[\[[^`]+\]\]`)', line)
             fragment = match.group(1) if match else "?"
-            errors.append(f"  línea {i}: {fragment} → debe ser [[...]] sin backticks")
+            errors.append(f"  line {i}: {fragment} → must be [[...]] without backticks")
 
     return errors
 
 
 def _check_malformed_wikilinks(body, rel):
-    """Detecta wikilinks sintácticamente incompletos en el body.
+    """Detects syntactically incomplete wikilinks in the body.
 
-    Patrones detectados:
-    - [[concepto — sin cierre ]] en la misma línea
-    - [[concepto|alias — sin cierre ]] en la misma línea
+    Detected patterns:
+    - [[concept — missing closing ]] on the same line
+    - [[concept|alias — missing closing ]] on the same line
 
     Returns:
-        list[str]: Lista de líneas con wikilinks malformados.
+        list[str]: List of lines with malformed wikilinks.
     """
     errors = []
 
-    # Eliminar bloques de código fenced (```...```) e inline code (`...`) para evitar falsos positivos
+    # Remove fenced code blocks (```...```) and inline code (`...`) to avoid false positives
     clean = re.sub(r'```[\s\S]*?```', '', body)
     clean = re.sub(r'`[^`]+`', '', clean)
 
     for i, line in enumerate(clean.split("\n"), 1):
-        # Buscar [[ que no tenga ]] después en la misma línea
-        # Excluir líneas que son parte normal de markdown (ej: [[ en texto)
+        # Find [[ that doesn't have ]] after it on the same line
+        # Exclude lines that are normal markdown parts (e.g.: [[ in text)
         opens = [m.start() for m in re.finditer(r'\[\[', line)]
         closes = [m.start() for m in re.finditer(r'\]\]', line)]
 
         if len(opens) > len(closes):
-            # Hay más aperturas que cierres — falta al menos un ]]
-            errors.append(f"  línea {i}: wikilink sin cerrar: {line.strip()[:80]}")
+            # More opens than closes — at least one ]] is missing
+            errors.append(f"  line {i}: unclosed wikilink: {line.strip()[:80]}")
 
     return errors
 
 
 def _check_wikilinks_in_tables(body, rel):
-    """Detecta wikilinks con alias (|) dentro de filas de tabla markdown.
+    """Detects wikilinks with alias (|) inside markdown table rows.
 
-    En tablas, el | del wikilink [[target|alias]] colisiona con el separador
-    de celda, partiendo el wikilink en dos celdas separadas. La pipe debe
-    escaparse: [[target\\|alias]].
+    In tables, the | of the wikilink [[target|alias]] collides with the cell
+    separator, splitting the wikilink into two separate cells. The pipe must
+    be escaped: [[target\\|alias]].
 
     Returns:
-        list[str]: Lista de líneas con wikilinks conflictivos.
+        list[str]: List of lines with conflicting wikilinks.
     """
     errors = []
 
-    # Eliminar bloques de código fenced
+    # Remove fenced code blocks
     clean = re.sub(r'```[\s\S]*?```', '', body)
 
     for i, line in enumerate(clean.split("\n"), 1):
         stripped = line.strip()
-        # Solo aplicar a filas de tabla (empiezan por |)
+        # Only apply to table rows (starting with |)
         if not stripped.startswith('|'):
             continue
-        # Buscar [[...|...]] donde | no está escapado con \
+        # Find [[...|...]] where | is not escaped with \
         matches = re.finditer(r'\[\[([^]]*?[^\\])\|([^]]+)\]\]', stripped)
         for m in matches:
             fragment = m.group(0)
             errors.append(
-                f"  línea {i}: {fragment} → dentro de tabla, "
-                f"escapar pipe con \\| para que Obsidian no rompa la celda"
+                f"  line {i}: {fragment} → inside table, "
+                f"escape pipe with \\| so Obsidian doesn't break the cell"
             )
 
     return errors
 
 
 def _check_broken_wikilinks(body, rel, vault, fm=None):
-    """Detecta wikilinks que apuntan a archivos inexistentes.
+    """Detects wikilinks pointing to nonexistent files.
 
-    También verifica targets en el campo 'links:' del frontmatter si fm
-    está presente.
+    Also verifies targets in the frontmatter 'links:' field if fm
+    is present.
 
     Args:
-        body: Contenido del body.
-        rel: Ruta relativa del archivo siendo validado.
-        vault: Path al vault root.
-        fm: Frontmatter parseado (dict o None). Si está presente y tiene
-            campo 'links:', se verifican sus targets.
+        body: Body content.
+        rel: Relative path of the file being validated.
+        vault: Path to vault root.
+        fm: Parsed frontmatter (dict or None). If present and has
+            'links:' field, its targets are verified.
 
     Returns:
-        list[str]: Lista de wikilinks rotos encontrados.
+        list[str]: List of broken wikilinks found.
     """
     from cli.wikilinks import extract_links, resolve_link
 
@@ -154,9 +154,9 @@ def _check_broken_wikilinks(body, rel, vault, fm=None):
                 continue
             resolved = resolve_link(target, rel, vault)
             if resolved is None:
-                errors.append(f"  [[{target}]] → archivo no encontrado")
+                errors.append(f"  [[{target}]] → file not found")
 
-    # Verificar targets en links: del frontmatter
+    # Verify targets in links: from frontmatter
     if fm and isinstance(fm.get("links"), list):
         name_index = {}
         try:
@@ -194,21 +194,21 @@ def _check_broken_wikilinks(body, rel, vault, fm=None):
                 edge_type = link.get("type", "?")
                 errors.append(
                     f"  links: target='{target}' type='{edge_type}' "
-                    f"→ archivo no encontrado"
+                    f"→ file not found"
                 )
 
     return errors
 
 
 def _check_edge_type_consistency(filepath, vault):
-    """Detecta inconsistencias en aristas tipadas del campo links:.
+    """Detects inconsistencies in typed edges of the links: field.
 
-    Verifica:
-    - Edge types no reconocidos (ERROR — bloqueante)
-    - Exclusión mutua: mismo target con extiende Y refina (ERROR)
-    - corrige sin target deprecado ni cyber.corrected_by (ERROR)
-    - Par atípico (via validate_cross_type_pair) con score semántico
-      (WARNING — informativo, plan scoring-semantico: priorizados por score)
+    Verifies:
+    - Unrecognized edge types (ERROR — blocking)
+    - Mutual exclusion: same target with extiende AND refina (ERROR)
+    - corrige without deprecated target nor cyber.corrected_by (ERROR)
+    - Atypical pair (via validate_cross_type_pair) with semantic score
+      (WARNING — informational, scoring-semantico plan: prioritized by score)
 
     Returns:
         tuple[list[str], list[str]]: (errors, warnings).
@@ -243,7 +243,7 @@ def _check_edge_type_consistency(filepath, vault):
 
         if edge_type not in VALID_EDGE_TYPES:
             errors.append(
-                f"  links: tipo desconocido '{edge_type}' en {rel} → {target}"
+                f"  links: unknown type '{edge_type}' in {rel} → {target}"
             )
             continue
 
@@ -266,15 +266,15 @@ def _check_edge_type_consistency(filepath, vault):
                         )
                         if "deprec" not in status.lower() and not has_cb:
                             errors.append(
-                                f"  links: {rel} corrige a '{target}' pero el "
-                                f"target no está deprecado (status='{status}')"
+                                f"  links: {rel} corrects '{target}' but the "
+                                f"target is not deprecated (status='{status}')"
                             )
                 except Exception:
                     pass
 
-        # Par atípico con score semántico: WARNING no bloqueante.
-        # Aristas históricas pueden tener pares fuera de valid_pairs sin
-        # romper el commit; el score (0.0-1.0) prioriza la revisión.
+        # Atypical pair with semantic score: non-blocking WARNING.
+        # Historical edges may have pairs outside valid_pairs without
+        # breaking the commit; the score (0.0-1.0) prioritizes review.
         target_file = vault / target
         tgt_type = "?"
         tgt_fm = None
@@ -314,40 +314,40 @@ def _check_edge_type_consistency(filepath, vault):
     for target, types in types_per_target.items():
         if "extiende" in types and "refina" in types:
             errors.append(
-                f"  links: exclusión mutua en {rel} → {target}: "
-                f"'extiende' y 'refina' simultáneos"
+                f"  links: mutual exclusion in {rel} → {target}: "
+                f"'extiende' and 'refina' simultaneously"
             )
 
     return errors, warnings
 
 
 def _validate_file(filepath, vault):
-    """Valida el frontmatter y wikilinks de un archivo .md.
+    """Validates the frontmatter and wikilinks of a .md file.
 
     Returns:
-        tuple[bool, str]: (ok, mensaje_error). ok=True si válido.
+        tuple[bool, str]: (ok, error_message). ok=True if valid.
     """
     rel = str(filepath.relative_to(vault))
 
-    # Excluir archivos que no son conceptos
+    # Exclude files that are not concepts
     if filepath.name in EXCLUDE_FILES or filepath.name == "Untitled.md":
         return True, ""
 
     try:
         text = filepath.read_text(encoding="utf-8")
     except Exception as e:
-        return False, f"{rel}: no se pudo leer: {e}"
+        return False, f"{rel}: could not read: {e}"
 
-    # Si no empieza con ---, no es un concepto (nota suelta del usuario)
+    # If it doesn't start with ---, it's not a concept (loose user note)
     if not text.startswith("---"):
         return True, ""
 
-    # Extraer bloque YAML y body
+    # Extract YAML block and body
     end = text.find("\n---\n", 3)
     if end == -1:
         end = text.find("\n---", 3)
     if end == -1:
-        return False, f"{rel}: frontmatter sin cerrar (falta '---' final)"
+        return False, f"{rel}: unclosed frontmatter (missing final '---')"
 
     fm_text = text[3:end]
     body = _extract_body(text, end)
@@ -361,14 +361,14 @@ def _validate_file(filepath, vault):
     except yaml.YAMLError as e:
         line = ""
         if hasattr(e, 'problem_mark') and e.problem_mark:
-            line = f" (línea {e.problem_mark.line + 1})"
-        return False, f"{rel}: YAML inválido{line}: {e}"
+            line = f" (line {e.problem_mark.line + 1})"
+        return False, f"{rel}: invalid YAML{line}: {e}"
 
     if fm is None:
-        return False, f"{rel}: frontmatter vacío"
+        return False, f"{rel}: empty frontmatter"
 
     if not isinstance(fm, dict):
-        return False, f"{rel}: frontmatter no es un dict YAML válido"
+        return False, f"{rel}: frontmatter is not a valid YAML dict"
 
     # ── Validación 2: Campos obligatorios ──
     if not fm.get("type"):
@@ -391,7 +391,7 @@ def _validate_file(filepath, vault):
     # ── Validación 4: Wikilinks malformados ──
     malformed = _check_malformed_wikilinks(body, rel)
     if malformed:
-        all_errors.append(f"wikilinks sintácticamente incompletos (falta ]] de cierre):\n" + "\n".join(malformed))
+        all_errors.append(f"syntactically incomplete wikilinks (missing closing ]]):\n" + "\n".join(malformed))
 
     # ── Validación 5: Wikilinks con alias en tablas ──
     table_wl = _check_wikilinks_in_tables(body, rel)
@@ -421,12 +421,12 @@ def _validate_file(filepath, vault):
 
 
 def run(args, vault, config=None):
-    """Ejecuta validación de frontmatter."""
+    """Runs frontmatter validation."""
     target = getattr(args, "target", None)
     validate_all = getattr(args, "all", False)
 
     if not vault.exists():
-        print(f"Error: vault no encontrado en {vault}", file=sys.stderr)
+        print(f"Error: vault not found at {vault}", file=sys.stderr)
         return 1
 
     # Determinar qué archivos validar
@@ -440,7 +440,7 @@ def run(args, vault, config=None):
                     filepath = f
                     break
         if not filepath.exists():
-            print(f"✗ No encontrado: {target}", file=sys.stderr)
+            print(f"✗ Not found: {target}", file=sys.stderr)
             return 1
         files = [filepath]
     elif validate_all:
@@ -457,7 +457,7 @@ def run(args, vault, config=None):
         files = [vault / f for f in staged
                  if not f.endswith(("index.md", "log.md", "dashboard.md"))]
         if not files:
-            print("✓ No hay archivos .md staged para validar.")
+            print("✓ No .md files staged for validation.")
             return 0
 
     # Validar
@@ -475,14 +475,14 @@ def run(args, vault, config=None):
 
     # Reporte
     if errors:
-        print(f"❌ {len(errors)} archivo(s) con errores:", file=sys.stderr)
+        print(f"❌ {len(errors)} file(s) with errors:", file=sys.stderr)
         for e in errors:
             print(f"   {e}", file=sys.stderr)
-        print(f"\n✅ {ok_count} válido(s), ❌ {len(errors)} inválido(s)",
+        print(f"\n✅ {ok_count} valid, ❌ {len(errors)} invalid",
               file=sys.stderr)
         print("\nCommit abortado. Corrige los errores e intenta de nuevo.",
               file=sys.stderr)
         return 1
 
-    print(f"✅ {ok_count} archivo(s) válido(s).")
+    print(f"✅ {ok_count} file(s) valid.")
     return 0

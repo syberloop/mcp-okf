@@ -1,15 +1,15 @@
-"""Comando health — Verificación completa de integridad del vault OKF.
+"""health command — Complete integrity check of the OKF vault.
 
-9 chequeos:
-    1. Frontmatter válido (type + description)
-    2. Índices sincronizados
-    3. Grafo conectado (huérfanos, densidad, tags)
-    4. Links rotos (wikilinks + markdown)
-    5. Scripts funcionales (smoke test via subprocess)
-    6. Git hook presente
-    7. Bloque cyber: válido
-    8. Sincronización plugin↔spec (plugin_hash vs HEAD del repo)
-    9. Timestamp vs git (consistencia fecha creación)
+9 checks:
+    1. Valid frontmatter (type + description)
+    2. Synced indexes
+    3. Connected graph (orphans, density, tags)
+    4. Broken links (wikilinks + markdown)
+    5. Working scripts (smoke test via subprocess)
+    6. Git hook present
+    7. Cyber block: valid
+    8. Plugin↔spec sync (plugin_hash vs repo HEAD)
+    9. Timestamp vs git (creation date consistency)
 """
 
 import json
@@ -37,26 +37,26 @@ def _check_frontmatter(vault):
         try:
             text = f.read_text(encoding="utf-8")
         except Exception:
-            bad.append(f"{rel}: no se pudo leer")
+            bad.append(f"{rel}: could not read")
             continue
 
         fm, _ = parse_frontmatter(text)
         if fm is None:
-            bad.append(f"{rel}: sin frontmatter o YAML inválido")
+            bad.append(f"{rel}: missing frontmatter or invalid YAML")
             continue
 
         if not fm.get("type"):
-            bad.append(f"{rel}: falta 'type' (OKF requerido)")
+            bad.append(f"{rel}: missing 'type' (OKF required)")
             continue
 
         desc = fm.get("description")
         if not desc or not str(desc).strip():
-            bad.append(f"{rel}: falta 'description' (política del vault)")
+            bad.append(f"{rel}: missing 'description' (vault policy)")
             continue
 
         desc_str = str(desc).strip()
         if len(desc_str) < 15:
-            warnings.append(f"{rel}: description muy corta ({len(desc_str)} chars)")
+            warnings.append(f"{rel}: description too short ({len(desc_str)} chars)")
 
         ok += 1
 
@@ -70,7 +70,7 @@ def _check_indices(vault):
 
     for idx_file in sorted(vault.rglob("index.md")):
         parent = idx_file.parent
-        rel_dir = str(parent.relative_to(vault)) if parent != vault else "raíz"
+        rel_dir = str(parent.relative_to(vault)) if parent != vault else "root"
 
         from cli.vault import EXCLUDE_FILES as _EXCL
         real_files = {f.name for f in parent.glob("*.md")
@@ -83,7 +83,7 @@ def _check_indices(vault):
         try:
             text = idx_file.read_text(encoding="utf-8")
         except Exception:
-            stale.append(f"{rel_dir}/index.md: no se pudo leer")
+            stale.append(f"{rel_dir}/index.md: could not read")
             continue
 
         if not real_files and not real_dirs:
@@ -94,8 +94,8 @@ def _check_indices(vault):
                     body = body[end + 5:]
             body = body.strip()
             if len(body) > 150:
-                stale.append(f"{rel_dir}/index.md: sin archivos pero contenido sustancial "
-                             f"({len(body)} chars) — ¿debería ser un concepto?")
+                stale.append(f"{rel_dir}/index.md: no files but substantial content "
+                             f"({len(body)} chars) — should this be a concept?")
             continue
 
         listed_files = set(re.findall(r'\[([^\]]+)\]\(([^)]+\.md)\)', text))
@@ -110,11 +110,11 @@ def _check_indices(vault):
 
         issues = []
         if phantom:
-            issues.append(f"lista archivos inexistentes: {', '.join(sorted(phantom))}")
+            issues.append(f"lists nonexistent files: {', '.join(sorted(phantom))}")
         if missing_files:
-            issues.append(f"no lista archivos: {', '.join(sorted(missing_files))}")
+            issues.append(f"missing from index: {', '.join(sorted(missing_files))}")
         if missing_dirs:
-            issues.append(f"no lista subdirectorios: {', '.join(sorted(missing_dirs))}")
+            issues.append(f"missing subdirectories: {', '.join(sorted(missing_dirs))}")
 
         if issues:
             stale.append(f"{rel_dir}/index.md: {'; '.join(issues)}")
@@ -127,7 +127,7 @@ def _check_indices(vault):
 # ── Check 3: Grafo ──
 
 def _check_graph(vault):
-    """Salud del grafo via cli.commands.graph (import directo, no subprocess)."""
+    """Graph health via cli.commands.graph (direct import, not subprocess)."""
     try:
         from cli.commands.graph import build_graph, build_tag_index
         graph = build_graph(vault)
@@ -162,22 +162,22 @@ def _check_graph(vault):
 
         warnings = []
         if orphans > 0:
-            warnings.append(f"{orphans} concepto(s) huérfano(s)")
+            warnings.append(f"{orphans} orphan concept(s)")
         if density < 0.05:
-            warnings.append(f"densidad baja ({density:.3f})")
+            warnings.append(f"low density ({density:.3f})")
 
         return {
             "nodes": nodes, "edges": edges, "orphans": orphans, "density": density,
             "tags": {"total": total_tags, "shared": shared_tags},
         }, warnings
     except Exception as e:
-        return None, [f"análisis de grafo falló: {e}"]
+        return None, [f"graph analysis failed: {e}"]
 
 
 # ── Check 4: Links rotos ──
 
 def _resolve_simple(target, vault, current_dir, name_index):
-    """Resolución de links (misma lógica que wikilinks.resolve_link)."""
+    """Link resolution (same logic as wikilinks.resolve_link)."""
     if "#" in target:
         target = target.split("#")[0]
     if target.startswith("/"):
@@ -250,7 +250,7 @@ def _check_broken_links(vault):
 # ── Check 5: Scripts funcionales ──
 
 def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
-    """Smoke test: los comandos del CLI funcionan (vía subprocess, autocontenido)."""
+    """Smoke test: CLI commands work (via subprocess, self-contained)."""
     cli_module = str((Path(__file__).resolve().parent.parent.parent))
 
     tests = [
@@ -262,7 +262,7 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
         (["audit"], 10),
         (["review", "--count"], 10),
         (["new", "--type", "Decision", "--title", "Health Check Smoke Test",
-          "--description", "Test automático del health check.", "--dry-run"], 10),
+          "--description", "Automatic health check test.", "--dry-run"], 10),
     ]
 
     ok, failed = 0, []
@@ -301,9 +301,9 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
 def _check_git_hook(vault):
     hook = vault / ".git" / "hooks" / "pre-commit"
     if not hook.exists():
-        return False, "hook pre-commit no existe"
+        return False, "pre-commit hook does not exist"
     if not os.access(hook, os.X_OK):
-        return False, "hook pre-commit no es ejecutable"
+        return False, "pre-commit hook is not executable"
     return True, None
 
 
@@ -337,16 +337,16 @@ def _check_cyber(vault, excluded_cyber=None):
         review_on = str(cyber.get("review_on", "")) if cyber.get("review_on") else ""
 
         if concept_type in excluded_cyber:
-            errors.append(f"{rel}: bloque cyber: en type '{concept_type}' "
-                          f"(excluido — solo Decision/Plan/Project/Insight)")
+            errors.append(f"{rel}: cyber block: in type '{concept_type}' "
+                          f"(excluded — only Decision/Plan/Project/Insight)")
             continue
 
         if not outcome or outcome in ("", "None"):
-            warnings.append(f"{rel}: bloque cyber: sin 'outcome'")
+            warnings.append(f"{rel}: cyber block: missing 'outcome'")
 
         if outcome == "pending" and review_on and review_on <= today:
-            errors.append(f"{rel}: cyber.outcome=pending con review_on={review_on} "
-                          f"vencido — loop roto")
+            errors.append(f"{rel}: cyber.outcome=pending with review_on={review_on} "
+                          f"expired — broken loop")
 
         ok += 1
 
@@ -356,13 +356,13 @@ def _check_cyber(vault, excluded_cyber=None):
 # ── Check 8: Sincronización plugin↔spec ──
 
 def _check_plugin_hash_sync(vault):
-    """Verifica que plugin_hash en specs coincida con HEAD del repo del plugin."""
+    """Verifies that plugin_hash in specs matches the plugin repo HEAD."""
     specs_dir = vault / "specs"
     plugins_dir = Path.home() / ".hermes" / "plugins"
     ok, stale = 0, []
 
     if not specs_dir.is_dir():
-        return 0, ["specs/ no existe"]
+        return 0, ["specs/ does not exist"]
 
     for spec_file in sorted(specs_dir.glob("*.md")):
         try:
@@ -404,7 +404,7 @@ def _check_plugin_hash_sync(vault):
                         break
             if not found:
                 stale.append(f"{spec_file.relative_to(vault)}: plugin_hash={plugin_hash[:7]} "
-                             f"pero no se encontró repo local en ~/.hermes/plugins/")
+                             f"but no local repo found in ~/.hermes/plugins/")
                 continue
 
         try:
@@ -414,8 +414,8 @@ def _check_plugin_hash_sync(vault):
                 cwd=str(plugin_dir),
             )
             if result.returncode != 0:
-                stale.append(f"{spec_file.relative_to(vault)}: no se pudo leer HEAD "
-                             f"de {plugin_dir}")
+                stale.append(f"{spec_file.relative_to(vault)}: could not read HEAD "
+                             f"of {plugin_dir}")
                 continue
 
             head = result.stdout.strip()
@@ -433,13 +433,13 @@ def _check_plugin_hash_sync(vault):
 # ── Check 9: Timestamp vs git ──
 
 def _check_timestamp_git(vault):
-    """Verifica que el timestamp del frontmatter sea coherente con git.
+    """Verifies that the frontmatter timestamp is consistent with git.
 
-    El timestamp en OKF es 'last meaningful change'. En la práctica, okf_new lo
-    setea al crear y rara vez se actualiza. Este check verifica dos cosas:
-    1. El archivo TIENE timestamp (warning si falta, excepto index/log/sesiones)
-    2. El timestamp no es anterior al primer commit ni muy posterior al último
-       (señal de timestamp inventado o desincronizado)
+    The timestamp in OKF is 'last meaningful change'. In practice, okf_new
+    sets it at creation and it's rarely updated. This check verifies two things:
+    1. The file HAS a timestamp (warning if missing, except index/log/sesiones)
+    2. The timestamp is not before the first commit nor far after the last
+       (signal of invented or desynchronized timestamp)
     """
     ok, warnings, errors = 0, [], []
 
@@ -461,14 +461,14 @@ def _check_timestamp_git(vault):
             parts = f.relative_to(vault).parts
             if parts and parts[0] == "sesiones":
                 continue
-            warnings.append(f"{rel}: sin timestamp")
+            warnings.append(f"{rel}: missing timestamp")
             continue
 
         ts_str = str(ts_raw).strip().strip('"').strip("'")
         try:
             ts_dt = datetime.fromisoformat(ts_str)
         except ValueError:
-            errors.append(f"{rel}: timestamp inválido: '{ts_raw}'")
+            errors.append(f"{rel}: invalid timestamp: '{ts_raw}'")
             continue
 
         ts_date = ts_dt.astimezone(timezone.utc).date() if ts_dt.tzinfo else ts_dt.date()
@@ -521,7 +521,7 @@ def run(args, vault, config=None):
     plugin_hash_enabled = config.features_plugin_hash_sync if config else True
 
     if not vault.exists():
-        msg = f"Error: vault no encontrado en {vault}"
+        msg = f"Error: vault not found at {vault}"
         if json_out:
             print(json.dumps({"error": msg}))
         else:
@@ -547,7 +547,7 @@ def run(args, vault, config=None):
     graph_data, graph_warn = _check_graph(vault)
     results["graph"] = graph_data
     if graph_data is None:
-        all_errors.append("grafo: no se pudo analizar")
+        all_errors.append("graph: could not be analyzed")
     all_warnings.extend(graph_warn)
 
     # 4. Links rotos
@@ -628,72 +628,72 @@ def run(args, vault, config=None):
     print("─" * 54)
 
     if fm_bad:
-        print(f"❌ Frontmatter: {fm_ok} ok, {len(fm_bad)} errores")
+        print(f"❌ Frontmatter: {fm_ok} ok, {len(fm_bad)} errors")
         for e in fm_bad[:5]:
             print(f"   - {e}")
     else:
-        print(f"✅ Frontmatter: {fm_ok}/{fm_ok} archivos conformes")
+        print(f"✅ Frontmatter: {fm_ok}/{fm_ok} files compliant")
 
     total_idx = idx_ok + len(idx_stale)
     if idx_stale:
-        print(f"⚠️  Índices: {idx_ok}/{total_idx} sincronizados, {len(idx_stale)} desactualizados")
+        print(f"⚠️  Indexes: {idx_ok}/{total_idx} in sync, {len(idx_stale)} outdated")
         for e in idx_stale[:3]:
             print(f"   - {e}")
     else:
-        print(f"✅ Índices: {total_idx}/{total_idx} sincronizados")
+        print(f"✅ Indexes: {total_idx}/{total_idx} in sync")
 
     if graph_data:
         g = graph_data
         gt = g.get("tags", {})
-        tag_str = f", {gt.get('total', 0)} tags ({gt.get('shared', 0)} compartidas)"
+        tag_str = f", {gt.get('total', 0)} tags ({gt.get('shared', 0)} shared)"
         if g["orphans"] == 0:
-            print(f"✅ Grafo: {g['nodes']} nodos, {g['edges']} aristas, 0 huérfanos{tag_str}")
+            print(f"✅ Graph: {g['nodes']} nodes, {g['edges']} edges, 0 orphans{tag_str}")
         else:
-            print(f"⚠️  Grafo: {g['nodes']} nodos, {g['edges']} aristas, {g['orphans']} huérfanos{tag_str}")
+            print(f"⚠️  Graph: {g['nodes']} nodes, {g['edges']} edges, {g['orphans']} orphans{tag_str}")
     else:
-        print("❌ Grafo: no se pudo analizar")
+        print("❌ Graph: could not be analyzed")
 
     if broken:
-        print(f"⚠️  Links rotos: {len(broken)}")
+        print(f"⚠️  Broken links: {len(broken)}")
         for b in broken[:3]:
             print(f"   - {b}")
     else:
-        print("✅ Links: sin links rotos detectados")
+        print("✅ Links: no broken links detected")
 
     total_scr = scripts_ok + len(scripts_failed)
     if scripts_failed:
-        print(f"❌ Scripts: {scripts_ok}/{total_scr} funcionales")
+        print(f"❌ Scripts: {scripts_ok}/{total_scr} functional")
         for f in scripts_failed:
             print(f"   - {f}")
     else:
-        print(f"✅ Scripts: {total_scr}/{total_scr} funcionales")
+        print(f"✅ Scripts: {total_scr}/{total_scr} functional")
 
     if hook_ok:
-        print("✅ Git hook: pre-commit presente y ejecutable")
+        print("✅ Git hook: pre-commit present and executable")
     else:
         print(f"❌ Git hook: {hook_err}")
 
     if cyber_err:
-        print(f"❌ Bloque cyber: {cyber_ok} ok, {len(cyber_err)} errores")
+        print(f"❌ Cyber block: {cyber_ok} ok, {len(cyber_err)} errors")
         for e in cyber_err[:3]:
             print(f"   - {e}")
     elif cyber_warn:
-        print(f"⚠️  Bloque cyber: {cyber_ok} ok, {len(cyber_warn)} warnings")
+        print(f"⚠️  Cyber block: {cyber_ok} ok, {len(cyber_warn)} warnings")
     else:
-        print(f"✅ Bloque cyber: {cyber_ok}/{cyber_ok} conformes")
+        print(f"✅ Cyber block: {cyber_ok}/{cyber_ok} compliant")
 
     total_plugins = plugin_ok + len(plugin_stale)
     if plugin_stale:
-        print(f"⚠️  Plugin↔spec: {plugin_ok}/{total_plugins} sincronizados")
+        print(f"⚠️  Plugin↔spec: {plugin_ok}/{total_plugins} in sync")
         for e in plugin_stale[:3]:
             print(f"   - {e}")
     elif total_plugins > 0:
-        print(f"✅ Plugin↔spec: {total_plugins}/{total_plugins} sincronizados")
+        print(f"✅ Plugin↔spec: {total_plugins}/{total_plugins} in sync")
 
     # Timestamp vs git
     total_ts = ts_ok + len(ts_warn) + len(ts_err)
     if ts_err:
-        print(f"❌ Timestamp↔git: {ts_ok}/{total_ts} ok, {len(ts_err)} errores")
+        print(f"❌ Timestamp↔git: {ts_ok}/{total_ts} ok, {len(ts_err)} errors")
         for e in ts_err[:3]:
             print(f"   - {e}")
     elif ts_warn:
@@ -701,16 +701,16 @@ def run(args, vault, config=None):
         for w in ts_warn[:3]:
             print(f"   - {w}")
     else:
-        print(f"✅ Timestamp↔git: {ts_ok}/{total_ts} coinciden")
+        print(f"✅ Timestamp↔git: {ts_ok}/{total_ts} match")
 
     print("─" * 54)
     if all_errors:
-        print(f"🔴 Salud: {checks_ok}/{checks_total} — {len(all_errors)} errores, "
+        print(f"🔴 Health: {checks_ok}/{checks_total} — {len(all_errors)} errors, "
               f"{len(all_warnings)} warnings")
     elif all_warnings:
-        print(f"🟡 Salud: {checks_ok}/{checks_total} — {len(all_warnings)} warnings")
+        print(f"🟡 Health: {checks_ok}/{checks_total} — {len(all_warnings)} warnings")
     else:
-        print(f"🟢 Salud: {checks_ok}/{checks_total} — todo limpio")
+        print(f"🟢 Health: {checks_ok}/{checks_total} — all clear")
 
     if strict and (all_errors or all_warnings):
         return 1

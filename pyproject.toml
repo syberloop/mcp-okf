@@ -1,7 +1,7 @@
 [project]
 name = "okf-mcp"
 version = "1.28.1"
-description = "MCP server para el vault OKF — 14 tools para que agentes AI consulten, creen y analicen conceptos"
+description = "MCP server for OKF vaults — 17 tools for AI agents to query, create, and analyze concepts"
 requires-python = ">=3.11"
 dependencies = ["mcp[cli]>=1.0.0"]
 license = { text = "MIT" }

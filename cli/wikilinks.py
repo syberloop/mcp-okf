@@ -1,8 +1,8 @@
-"""Extracción y resolución de wikilinks y markdown links.
+"""Extraction and resolution of wikilinks and markdown links.
 
-Responsabilidades:
-- Extraer targets de [[wikilinks]] y [text](path.md)
-- Resolver targets a paths relativos al vault
+Responsibilities:
+- Extract targets from [[wikilinks]] and [text](path.md)
+- Resolve targets to vault-relative paths
 """
 
 import re
@@ -15,14 +15,14 @@ MDLINK_RE = re.compile(r'\[([^\]]*)\]\(([^)]+\.md)\)')
 
 
 def extract_links(md_path, exclude_files=None):
-    """Extrae todos los targets de links (wikilinks + markdown) de un archivo.
+    """Extracts all link targets (wikilinks + markdown) from a file.
 
     Args:
-        md_path: Path al archivo .md.
-        exclude_files: Set de nombres de archivo a excluir.
+        md_path: Path to .md file.
+        exclude_files: Set of filenames to exclude.
 
     Returns:
-        list[str]: Lista de targets únicos.
+        list[str]: List of unique targets.
     """
     try:
         text = md_path.read_text(encoding="utf-8")
@@ -54,17 +54,17 @@ def extract_links(md_path, exclude_files=None):
 
 
 def resolve_link(target, vault, current_dir, name_index=None):
-    """Resuelve un link target a una ruta relativa al vault.
+    """Resolves a link target to a path relative to the vault.
 
     Args:
-        target: Texto del link (ej: "[[okf-v01]]" → "okf-v01").
-        vault: Path al vault.
-        current_dir: Path al directorio del archivo que contiene el link.
-        name_index: dict {filename: relpath} para búsqueda global (opcional,
-                    evita rglob redundante).
+        target: Link text (e.g. "[[okf-v01]]" → "okf-v01").
+        vault: Path to the vault.
+        current_dir: Path to the directory of the file containing the link.
+        name_index: dict {filename: relpath} for global lookup (optional,
+                    avoids redundant rglob).
 
     Returns:
-        str|None: Ruta relativa al vault, o None si no se encuentra.
+        str|None: Path relative to the vault, or None if not found.
     """
     from cli.vault import EXCLUDE_FILES
 

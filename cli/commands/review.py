@@ -1,6 +1,6 @@
-"""Comando review — Sensor del loop cibernético.
+"""Command review — Cybernetic loop sensor.
 
-Escanea conceptos con cyber.review_on <= hoy y clasifica por severidad.
+Scans concepts with cyber.review_on <= today and classifies by severity.
 """
 
 import json
@@ -11,18 +11,18 @@ from cli.vault import find_md_files
 
 
 def get_today_str():
-    """'Hoy' en la zona del dominio (Colombia, UTC-5), no en UTC.
+    """'Today' in the domain timezone (Colombia, UTC-5), not UTC.
 
-    Fix 2026-08-02: comparar review_on contra UTC adelantaba las
-    vencimientos entre 19:00 y 24:00 hora local (UTC ya estaba en el
-    día siguiente) — un review_on de mañana aparecía vencido hoy.
+    Fix 2026-08-02: comparing review_on against UTC advanced
+    expirations between 19:00 and 24:00 local time (UTC was already on
+    the next day) — a tomorrow review_on appeared expired today.
     """
     from datetime import timedelta
     return (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%d")
 
 
 def collect_due(vault):
-    """Busca conceptos con cyber.review_on <= hoy."""
+    """Finds concepts with cyber.review_on <= today."""
     today = get_today_str()
     due = []
 
@@ -62,7 +62,7 @@ def collect_due(vault):
                 "type": str(fm.get("type", "")),
                 "title": str(fm.get("title", rel)),
                 "severity": severity,
-                "outcome": outcome if outcome not in ("", "None") else "(sin medir)",
+                "outcome": outcome if outcome not in ("", "None") else "(unmeasured)",
                 "review_on": review_str,
                 "sensor": sensor,
                 "metric": metric_name,
@@ -72,7 +72,7 @@ def collect_due(vault):
 
 
 def run(args, vault, config=None):
-    """Ejecuta la revisión cibernética."""
+    """Runs the cybernetic review."""
     json_out = getattr(args, "json", False)
     count_only = getattr(args, "count", False)
 
@@ -86,33 +86,33 @@ def run(args, vault, config=None):
         if due:
             print(f"🔴{required} 🟡{verify}")
         else:
-            print("✅ nada pendiente")
+            print("✅ nothing pending")
     else:
         if not due:
-            print("✅ Nada pendiente de revisión.")
+            print("✅ Nothing pending review.")
         else:
             required = [d for d in due if d["severity"] == "required"]
             verify = [d for d in due if d["severity"] == "verify"]
 
-            print(f"📡 Revisión cibernética — {get_today_str()}")
+            print(f"📡 Cyber review — {get_today_str()}")
             print("─" * 55)
 
             if required:
-                print(f"\n🔴 Revisión requerida ({len(required)}):")
+                print(f"\n🔴 Review required ({len(required)}):")
                 for d in required:
                     print(f"   [{d['type']}] {d['file']}")
-                    print(f"   Sensor: {d['sensor']} | Métrica: {d['metric']}")
+                    print(f"   Sensor: {d['sensor']} | Metric: {d['metric']}")
                     print(f"   Outcome: {d['outcome']} | Review era: {d['review_on']}")
                     print("")
 
             if verify:
-                print(f"🟡 Re-verificar vigencia ({len(verify)}):")
+                print(f"🟡 Re-verify validity ({len(verify)}):")
                 for d in verify:
                     print(f"   [{d['type']}] {d['file']}")
                     print(f"   Outcome actual: {d['outcome']} | Review era: {d['review_on']}")
-                    print(f"   ¿Sigue siendo válida esta decisión?")
+                    print(f"   Is this decision still valid?")
                     print("")
 
-            print(f"─\n{len(due)} concepto(s) requieren atención.")
+            print(f"─\n{len(due)} concept(s) need attention.")
 
     return 1 if due else 0

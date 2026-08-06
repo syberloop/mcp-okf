@@ -1,4 +1,4 @@
-"""Comando read — Leer un concepto del vault + auto-incrementar contador reads."""
+"""Command read — Read a concept from the vault + auto-increment reads counter."""
 
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from cli.frontmatter import increment_reads
 
 
 def _find_file(target, vault):
-    """Busca un archivo por nombre o ruta relativa en el vault."""
+    """Searches for a file by name or relative path in the vault."""
     # Coincidencia exacta por ruta relativa
     candidate = vault / target
     if candidate.exists():
@@ -31,10 +31,10 @@ def _find_file(target, vault):
 
 
 def run(args, vault, config=None):
-    """Lee un concepto del vault."""
+    """Reads a concept from the vault."""
     target = getattr(args, "target", None)
     if not target:
-        print("Uso: python3 -m cli read <concepto> [--offset N] [--limit N]",
+        print("Usage: python3 -m cli read <concept> [--offset N] [--limit N]",
               file=sys.stderr)
         return 1
 
@@ -44,7 +44,7 @@ def run(args, vault, config=None):
 
     filepath = _find_file(target, vault)
     if filepath is None:
-        print(f"✗ No encontrado: {target}", file=sys.stderr)
+        print(f"✗ Not found: {target}", file=sys.stderr)
         return 1
 
     rel = filepath.relative_to(vault)
@@ -55,7 +55,7 @@ def run(args, vault, config=None):
         if new_val:
             print(f"📖 {rel}  (reads: {new_val})", file=sys.stderr)
     else:
-        print(f"📖 {rel}  (sin touch)", file=sys.stderr)
+        print(f"📖 {rel}  (no touch)", file=sys.stderr)
 
     # Imprimir contenido
     print(f"─── {rel} ({filepath.stat().st_size} bytes) ───", file=sys.stderr)
@@ -69,6 +69,6 @@ def run(args, vault, config=None):
 
     if end < total:
         next_offset = end + 1
-        print(f"\n─── truncado ({end}/{total} líneas) — continuar con --offset {next_offset} ───")
+        print(f"\n─── truncated ({end}/{total} lines) — continue with --offset {next_offset} ───")
 
     return 0

@@ -1,6 +1,6 @@
-"""Comando graph — Analizar el grafo de wikilinks del vault OKF.
+"""Command graph — Analyze the wikilink graph of the OKF vault.
 
-Subcomandos:
+Subcommands:
     stats, orphans, hubs, backlinks, deps, tags, bridges, cluster, path,
     dump, dirs, types, suggest-edge-types
 """
@@ -15,7 +15,7 @@ from cli.frontmatter import extract_tags, extract_typed_links, parse_frontmatter
 
 
 def build_graph(vault):
-    """Construye grafo dirigido con aristas tipadas y no tipadas, incluyendo scores.
+    """Builds directed graph with typed and untyped edges, including scores.
 
     Returns:
         {"relpath.md": {
@@ -152,7 +152,7 @@ def build_graph(vault):
 
 
 def build_tag_index(vault):
-    """Construye índice tag → archivos."""
+    """Builds tag → files index."""
     all_files = find_md_files(vault)
     tag_index = defaultdict(list)
     for f in all_files:
@@ -163,14 +163,14 @@ def build_tag_index(vault):
 
 
 def _resolve_name(filename, graph):
-    """Resuelve nombre parcial a nombre completo en el grafo."""
+    """Resolves partial name to full name in the graph."""
     if filename in graph:
         return filename
     matches = [n for n in graph if filename in n]
     if len(matches) == 1:
         return matches[0]
     if matches:
-        print(f"Coincidencias para '{filename}':", file=sys.stderr)
+        print(f"Matches for '{filename}':", file=sys.stderr)
         for m in matches[:10]:
             print(f"  {m}", file=sys.stderr)
     return None
@@ -182,38 +182,38 @@ def _cmd_stats(graph, tag_index):
     typed = sum(len(d["typed_out"]) for d in graph.values())
 
     lines = [
-        f"Nodos: {nodes}",
-        f"Aristas (wikilinks): {wikilinks}",
-        f"Aristas (tipadas): {typed}",
-        f"Aristas totales: {wikilinks + typed}",
+        f"Nodes: {nodes}",
+        f"Edges (wikilinks): {wikilinks}",
+        f"Edges (typed): {typed}",
+        f"Total edges: {wikilinks + typed}",
     ]
     edges = wikilinks + typed
     density = edges / max(nodes * (nodes - 1), 1)
-    lines.append(f"Densidad: {density:.3f}")
+    lines.append(f"Density: {density:.3f}")
 
     max_out = max(graph.items(), key=lambda x: len(x[1]["out"]))
     max_in = max(graph.items(), key=lambda x: len(x[1]["in"]))
     max_typed_out = max(graph.items(), key=lambda x: len(x[1]["typed_out"]))
     max_typed_in = max(graph.items(), key=lambda x: len(x[1]["typed_in"]))
 
-    lines.append(f"Mayor out-degree (wikilinks): {max_out[0]} ({len(max_out[1]['out'])})")
-    lines.append(f"Mayor in-degree (wikilinks):  {max_in[0]} ({len(max_in[1]['in'])})")
+    lines.append(f"Max out-degree (wikilinks): {max_out[0]} ({len(max_out[1]['out'])})")
+    lines.append(f"Max in-degree (wikilinks):  {max_in[0]} ({len(max_in[1]['in'])})")
     if typed > 0:
-        lines.append(f"Mayor typed-out: {max_typed_out[0]} ({len(max_typed_out[1]['typed_out'])})")
-        lines.append(f"Mayor typed-in:  {max_typed_in[0]} ({len(max_typed_in[1]['typed_in'])})")
+        lines.append(f"Max typed-out: {max_typed_out[0]} ({len(max_typed_out[1]['typed_out'])})")
+        lines.append(f"Max typed-in:  {max_typed_in[0]} ({len(max_typed_in[1]['typed_in'])})")
 
     huérfanos = sum(1 for n, d in graph.items()
                     if not d["in"] and not d["out"]
                     and not d["typed_in"] and not d["typed_out"]
                     and not n.startswith("agentes/")
                     and not n.startswith("sesiones/"))
-    lines.append(f"Huérfanos: {huérfanos}")
+    lines.append(f"Orphans: {huérfanos}")
 
     if tag_index is not None:
         total_tags = len(tag_index)
         shared_tags = sum(1 for t, files in tag_index.items() if len(files) >= 2)
-        lines.append(f"Tags totales: {total_tags}")
-        lines.append(f"Tags compartidas (≥2 archivos): {shared_tags}")
+        lines.append(f"Total tags: {total_tags}")
+        lines.append(f"Shared tags (≥2 files): {shared_tags}")
     return "\n".join(lines)
 
 
@@ -224,8 +224,8 @@ def _cmd_orphans(graph):
                and not n.startswith("agentes/")
                and not n.startswith("sesiones/")]
     if not orphans:
-        return "No hay conceptos huérfanos."
-    lines = [f"{len(orphans)} concepto(s) sin links:"]
+        return "No orphan concepts."
+    lines = [f"{len(orphans)} concept(s) without links:"]
     for o in orphans:
         lines.append(f"  {o}")
     return "\n".join(lines)
@@ -238,7 +238,7 @@ def _cmd_hubs(graph):
         key=lambda x: len(x[1]["in"]) + len(x[1]["typed_in"]),
         reverse=True,
     )
-    lines = ["Top conceptos más referenciados:"]
+    lines = ["Top most referenced concepts:"]
     for node, data in ranked[:10]:
         count = len(data["in"]) + len(data["typed_in"])
         if count == 0:
@@ -250,7 +250,7 @@ def _cmd_hubs(graph):
 def _cmd_backlinks(graph, filename, edge_type=None):
     resolved = _resolve_name(filename, graph)
     if resolved is None:
-        return f"No encontrado: {filename}"
+        return f"Not found: {filename}"
 
     incoming = graph[resolved]["in"]
     typed_incoming = [
@@ -264,11 +264,11 @@ def _cmd_backlinks(graph, filename, edge_type=None):
         all_incoming = sorted(set(incoming + typed_incoming))
 
     if not all_incoming:
-        filter_msg = f" (filtrado por tipo: {edge_type})" if edge_type else ""
-        return f"Nadie referencia a {resolved}{filter_msg}"
+        filter_msg = f" (filtered by type: {edge_type})" if edge_type else ""
+        return f"No one references {resolved}{filter_msg}"
 
     filter_msg = f" [edge_type={edge_type}]" if edge_type else ""
-    lines = [f"← Referencian a {resolved}{filter_msg}:"]
+    lines = [f"← Backlinks for {resolved}{filter_msg}:"]
     for src in all_incoming:
         # Anotar tipos de arista tipada con score
         typed_entries = [
@@ -283,7 +283,7 @@ def _cmd_backlinks(graph, filename, edge_type=None):
 def _cmd_deps(graph, filename, edge_type=None):
     resolved = _resolve_name(filename, graph)
     if resolved is None:
-        return f"No encontrado: {filename}"
+        return f"Not found: {filename}"
 
     outgoing = graph[resolved]["out"]
     typed_outgoing = [
@@ -297,11 +297,11 @@ def _cmd_deps(graph, filename, edge_type=None):
         all_outgoing = sorted(set(outgoing + typed_outgoing))
 
     if not all_outgoing:
-        filter_msg = f" (filtrado por tipo: {edge_type})" if edge_type else ""
-        return f"{resolved} no referencia a nadie{filter_msg}"
+        filter_msg = f" (filtered by type: {edge_type})" if edge_type else ""
+        return f"{resolved} references no one{filter_msg}"
 
     filter_msg = f" [edge_type={edge_type}]" if edge_type else ""
-    lines = [f"{resolved} → referencia a{filter_msg}:"]
+    lines = [f"{resolved} → references{filter_msg}:"]
     for tgt in all_outgoing:
         typed_entries = [
             f"{e['type']}:{e.get('score', '?')}" for e in graph[resolved]["typed_out"]
@@ -316,14 +316,14 @@ def _cmd_path(graph, origin, dest):
     for name, target in [(origin, "origin"), (dest, "dest")]:
         resolved = _resolve_name(name, graph)
         if resolved is None:
-            return f"No encontrado: {name}"
+            return f"Not found: {name}"
         if target == "origin":
             origin = resolved
         else:
             dest = resolved
 
     if origin not in graph or dest not in graph:
-        return "Origen o destino no encontrados."
+        return "Origin or destination not found."
 
     queue = deque([(origin, [origin])])
     visited = {origin}
@@ -340,7 +340,7 @@ def _cmd_path(graph, origin, dest):
                 visited.add(neighbor)
                 queue.append((neighbor, path + [neighbor]))
 
-    return f"No hay camino de {origin} a {dest}"
+    return f"No path from {origin} to {dest}"
 
 
 def _cmd_cluster(graph):
@@ -373,9 +373,9 @@ def _cmd_cluster(graph):
         clusters.append(sorted(component))
 
     clusters.sort(key=len, reverse=True)
-    lines = [f"{len(clusters)} componente(s) conexo(s):"]
+    lines = [f"{len(clusters)} connected component(s):"]
     for i, cluster in enumerate(clusters, 1):
-        lines.append(f"\n  Grupo {i} ({len(cluster)} conceptos):")
+        lines.append(f"\n  Group {i} ({len(cluster)} concepts):")
         for node in cluster:
             out_deg = len(graph[node]["out"]) + len(graph[node]["typed_out"])
             in_deg = len(graph[node]["in"]) + len(graph[node]["typed_in"])
@@ -386,9 +386,9 @@ def _cmd_cluster(graph):
 def _cmd_tags(graph, tag_index, tag_name):
     if tag_name:
         if tag_name not in tag_index:
-            return f"Tag no encontrada: {tag_name}"
+            return f"Tag not found: {tag_name}"
         files = tag_index[tag_name]
-        lines = [f"🏷️  {tag_name} ({len(files)} archivo(s)):"]
+        lines = [f"🏷️  {tag_name} ({len(files)} file(s)):"]
         for f in files:
             other_tags = [t for t, fl in tag_index.items() if f in fl and t != tag_name]
             extra = f"  [+ {', '.join(other_tags)}]" if other_tags else ""
@@ -396,11 +396,11 @@ def _cmd_tags(graph, tag_index, tag_name):
         return "\n".join(lines)
 
     sorted_tags = sorted(tag_index.items(), key=lambda x: (-len(x[1]), x[0]))
-    lines = [f"Tags en el vault ({len(tag_index)} total):\n"]
+    lines = [f"Tags in vault ({len(tag_index)} total):\n"]
     for tag, files in sorted_tags:
         count = len(files)
         if count >= 2:
-            lines.append(f"🏷️  {tag} ({count} archivos):")
+            lines.append(f"🏷️  {tag} ({count} files):")
             for f in files:
                 lines.append(f"   - {f}")
         else:
@@ -446,25 +446,25 @@ def _cmd_bridges(graph, tag_index):
             continue
         cluster_ids = {cluster_map[f] for f in files if f in cluster_map}
         if len(cluster_ids) >= 2:
-            lines.append(f"\n🌉  {tag} ({len(files)} archivos) — cruza {len(cluster_ids)} clusters:")
+            lines.append(f"\n🌉  {tag} ({len(files)} files) — spans {len(cluster_ids)} clusters:")
             for f in files:
                 cid = cluster_map.get(f, "?")
                 lines.append(f"   [{cid}] {f}")
 
     if not lines:
-        return "No hay tags que crucen clusters."
-    return "Tags puente entre clusters de wikilinks:\n" + "\n".join(lines)
+        return "No tags span clusters."
+    return "Bridge tags between wikilink clusters:\n" + "\n".join(lines)
 
 
 def _cmd_dirs(vault):
-    """Árbol de directorios con conteo de archivos de concepto."""
+    """Directory tree with concept file counts."""
     from collections import defaultdict
 
     all_files = find_md_files(vault)
     dir_counts: dict[str, int] = defaultdict(int)
     for f in all_files:
         rel = f.relative_to(vault)
-        parent = str(rel.parent) if str(rel.parent) != "." else "(raíz)"
+        parent = str(rel.parent) if str(rel.parent) != "." else "(root)"
         dir_counts[parent] += 1
 
     prefix_tree: dict[str, dict] = {}
@@ -476,7 +476,7 @@ def _cmd_dirs(vault):
                 node[part] = {}
             node = node[part]
 
-    lines = [f"Directorios del vault ({len(dir_counts)} carpetas con conceptos):\n"]
+    lines = [f"Vault directories ({len(dir_counts)} folders with concepts):\n"]
 
     def _render(node, path_parts=(), depth=0):
         items = sorted(node.items())
@@ -487,7 +487,7 @@ def _cmd_dirs(vault):
 
             count = dir_counts.get(full_path, 0)
             if count == 0 and depth == 0:
-                count = dir_counts.get("(raíz)", 0)
+                count = dir_counts.get("(root)", 0)
 
             indent = "    " * depth
             lines.append(f"{indent}{connector}{name}/ ({count})")
@@ -499,7 +499,7 @@ def _cmd_dirs(vault):
 
 
 def _cmd_types(vault):
-    """Distribución de conceptos por type (frontmatter)."""
+    """Distribution of concepts by type (frontmatter)."""
     from collections import Counter
 
     all_files = find_md_files(vault)
@@ -519,9 +519,9 @@ def _cmd_types(vault):
             missing.append(str(f.relative_to(vault)))
 
     if not type_counts and not missing:
-        return "No se encontraron conceptos con frontmatter."
+        return "No concepts with frontmatter found."
 
-    lines = [f"Distribución por type ({sum(type_counts.values())} conceptos con type, {len(missing)} sin type):\n"]
+    lines = [f"Distribution by type ({sum(type_counts.values())} concepts with type, {len(missing)} without type):\n"]
 
     max_count = max(type_counts.values()) if type_counts else 1
     for t, count in type_counts.most_common():
@@ -529,11 +529,11 @@ def _cmd_types(vault):
         lines.append(f"  {t:<20} {count:>4}  {bar}")
 
     if missing:
-        lines.append(f"\nSin type ({len(missing)}):")
+        lines.append(f"\nWithout type ({len(missing)}):")
         for m in missing[:15]:
             lines.append(f"  - {m}")
         if len(missing) > 15:
-            lines.append(f"  ... y {len(missing) - 15} más")
+            lines.append(f"  ... and {len(missing) - 15} more")
 
     return "\n".join(lines)
 
@@ -560,20 +560,20 @@ def _cmd_dump(graph):
 
 
 def _cmd_impact(graph, filename, vault=None):
-    """Análisis de impacto ontológico: dado un nodo modificado, qué otros
-    nodos deberían revisarse según las aristas tipadas.
+    """Ontological impact analysis: given a modified node, which other
+    nodes should be reviewed according to typed edges.
 
-    La dirección del impacto depende del tipo de arista:
-    - X 'depende' B → B cambió → X impactado (typed_in depende)
-    - B 'fundamenta' X → B cambió → X impactado (typed_out fundamenta)
-    - X 'aplica' B → B cambió → X impactado (typed_in aplica)
-    - X 'extiende' B → B cambió → X considerar revisión (typed_in extiende)
-    - X 'refina' B → B cambió → posible impacto menor (typed_in refina)
-    - X 'corrige' B → B cambió → verificar si la corrección sigue vigente
+    Impact direction depends on edge type:
+    - X 'depende' B → B changed → X impacted (typed_in depends)
+    - B 'fundamenta' X → B changed → X impacted (typed_out fundamenta)
+    - X 'aplica' B → B changed → X impacted (typed_in applies)
+    - X 'extiende' B → B changed → X consider review (typed_in extends)
+    - X 'refina' B → B changed → possible minor impact (typed_in refines)
+    - X 'corrige' B → B changed → verify the correction still applies
     """
     resolved = _resolve_name(filename, graph)
     if resolved is None:
-        return f"No encontrado: {filename}"
+        return f"Not found: {filename}"
 
     data = graph[resolved]
 
@@ -648,7 +648,7 @@ def _cmd_impact(graph, filename, vault=None):
         if etype != "corrige":
             continue
         raw_score = entry.get("score", 0.5)
-        reason = f"{source} corrige este nodo — ¿la corrección sigue vigente?"
+        reason = f"{source} corrects this node — is the correction still valid?"
         if raw_score >= 0.7:
             info.append((source, f"{reason} [score: {raw_score}]"))
         else:
@@ -670,47 +670,47 @@ def _cmd_impact(graph, filename, vault=None):
             info.append((target, f"{reason} [score: {raw_score}]"))
 
     if not blocking and not warning and not info:
-        return f"📋 {resolved}: sin aristas tipadas que indiquen impacto. Nadie depende ontológicamente de este nodo."
+        return f"📋 {resolved}: no typed edges indicating impact. No one depends ontologically on this node."
 
-    lines = [f"📋 Si modificás '{resolved}', revisá también:\n"]
+    lines = [f"📋 If you modify '{resolved}', also review:\n"]
 
     if blocking:
-        lines.append(f"🔴 REVISIÓN OBLIGATORIA ({len(blocking)}):")
+        lines.append(f"🔴 MANDATORY REVIEW ({len(blocking)}):")
         for path, reason in sorted(set(blocking)):
             lines.append(f"  {path}")
             lines.append(f"     {reason}")
         lines.append("")
 
     if warning:
-        lines.append(f"🟡 CONSIDERAR REVISIÓN ({len(warning)}):")
+        lines.append(f"🟡 CONSIDER REVIEW ({len(warning)}):")
         for path, reason in sorted(set(warning)):
             lines.append(f"  {path}")
             lines.append(f"     {reason}")
         lines.append("")
 
     if info:
-        lines.append(f"🔵 INFORMATIVO ({len(info)}):")
+        lines.append(f"🔵 INFORMATIVE ({len(info)}):")
         for path, reason in sorted(set(info)):
             lines.append(f"  {path}")
             lines.append(f"     {reason}")
         lines.append("")
 
     total = len(blocking) + len(warning) + len(info)
-    lines.append(f"Total: {total} nodos potencialmente impactados.")
+    lines.append(f"Total: {total} potentially impacted nodes.")
 
     return "\n".join(lines)
 
 
 def _insert_link_entry(fm_text: str, target: str, edge_type: str) -> str:
-    """Inserta una entrada links: en el frontmatter sin romper bloques anidados.
+    """Inserts a links: entry in the frontmatter without breaking nested blocks.
 
-    Maneja el caso de frontmatter con bloque cyber: u otros bloques anidados
-    después de links:. Inserta la entrada dentro del bloque links: existente
-    (si existe) o crea el bloque links: ANTES de cyber: (si existe) o al final.
+    Handles frontmatter with cyber: block or other nested blocks
+    after links:. Inserts the entry within the existing links: block
+    (if present) or creates the links: block BEFORE cyber: (if present) or at the end.
 
-    Bug corregido 2026-08-03: la inserción ingenua (fm_text.rstrip() + entrada)
-    agregaba la entrada DENTRO del bloque cyber cuando links: ya existía,
-    rompiendo el YAML (par atípico 'expected block end, but found -').
+    Bug fixed 2026-08-03: naive insertion (fm_text.rstrip() + entry)
+    added the entry INSIDE the cyber block when links: already existed,
+    breaking the YAML (atypical pair 'expected block end, but found -').
     """
     entry = f"  - target: {target}\n    type: {edge_type}"
 
@@ -765,16 +765,16 @@ def _insert_link_entry(fm_text: str, target: str, edge_type: str) -> str:
 
 def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
                             min_score=0.0):
-    """Sugiere tipos de arista para wikilinks existentes sin tipo.
+    """Suggests edge types for existing untyped wikilinks.
 
-    Algoritmo:
-    1. Itera todas las aristas out (wikilinks) del grafo.
-    2. Para cada arista A→B sin cobertura tipada, obtiene type_A y type_B
-       del frontmatter y llama suggest_edge_type().
-    3. Clasifica por confianza (ALTA, MEDIA, BAJA).
-    4. Con --apply, escribe solo las de confianza ALTA en el frontmatter.
-    5. Con --min-score N, solo aplica/escribe aristas con score >= N
-       (scoring semántico 0.0-1.0, plan scoring-semantico).
+    Algorithm:
+    1. Iterates all out edges (wikilinks) of the graph.
+    2. For each edge A→B without typed coverage, gets type_A and type_B
+       from frontmatter and calls suggest_edge_type().
+    3. Classifies by confidence (ALTA, MEDIA, BAJA).
+    4. With --apply, writes only HIGH confidence ones to frontmatter.
+    5. With --min-score N, only applies/writes edges with score >= N
+       (semantic scoring 0.0-1.0, scoring-semantico plan).
     """
     from cli.edge_types import suggest_edge_type, score_edge
     from cli.frontmatter import parse_frontmatter
@@ -893,7 +893,7 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
     lines = []
     total = sum(len(v) for v in suggestions.values())
     total_wikilinks = sum(len(d["out"]) for d in graph.values())
-    lines.append(f"Aristas analizadas: {total} sin tipo (de {total_wikilinks} wikilinks totales)\n")
+    lines.append(f"Edges analyzed: {total} without type (of {total_wikilinks} total wikilinks)\n")
 
     for conf in ("ALTA", "MEDIA", "BAJA"):
         items = suggestions[conf]
@@ -901,7 +901,7 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
             continue
         # Rankear por score descendente dentro de cada bucket
         items = sorted(items, key=lambda x: x["score"], reverse=True)
-        lines.append(f"=== {conf} ({len(items)} aristas) ===")
+        lines.append(f"=== {conf} ({len(items)} edges) ===")
         for item in items:
             score_str = f" [score: {item['score']:.2f}]" if min_score > 0 else ""
             lines.append(
@@ -954,25 +954,25 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
 
         if min_score > 0:
             lines.append(
-                f"\n{'DRY-RUN: ' if dry_run else ''}Aplicadas {apply_count} sugerencias "
-                f"con score >= {min_score:.2f}."
+                f"\n{'DRY-RUN: ' if dry_run else ''}Applied {apply_count} suggestions "
+                f"with score >= {min_score:.2f}."
             )
         else:
             lines.append(
-                f"\n{'DRY-RUN: ' if dry_run else ''}Aplicadas {apply_count} sugerencias ALTA."
+                f"\n{'DRY-RUN: ' if dry_run else ''}Applied {apply_count} HIGH suggestions."
             )
         if skipped_score and min_score > 0:
             lines.append(
-                f"  (descartadas {skipped_score} con score < {min_score:.2f})"
+                f"  (skipped {skipped_score} with score < {min_score:.2f})"
             )
         if not dry_run:
-            lines.append("⚠️  Revisa los cambios con git diff antes de commitear.")
+            lines.append("⚠️  Review changes with git diff before committing.")
 
     return "\n".join(lines)
 
 
 def run(args, vault, config=None):
-    """Ejecuta análisis de grafo."""
+    """Runs graph analysis."""
     subcommand = getattr(args, "subcommand", None)
     sub_args = getattr(args, "args", [])
     edge_type = getattr(args, "edge_type", None)
@@ -1011,17 +1011,17 @@ def run(args, vault, config=None):
         print(_cmd_hubs(graph))
     elif subcommand == "backlinks":
         if not sub_args:
-            print("Uso: python3 -m cli graph backlinks <archivo.md>", file=sys.stderr)
+            print("Usage: python3 -m cli graph backlinks <file.md>", file=sys.stderr)
             return 1
         print(_cmd_backlinks(graph, sub_args[0], edge_type=edge_type))
     elif subcommand == "deps":
         if not sub_args:
-            print("Uso: python3 -m cli graph deps <archivo.md>", file=sys.stderr)
+            print("Usage: python3 -m cli graph deps <file.md>", file=sys.stderr)
             return 1
         print(_cmd_deps(graph, sub_args[0], edge_type=edge_type))
     elif subcommand == "path":
         if len(sub_args) < 2:
-            print("Uso: python3 -m cli graph path <origen> <destino>", file=sys.stderr)
+            print("Usage: python3 -m cli graph path <origin> <destination>", file=sys.stderr)
             return 1
         print(_cmd_path(graph, sub_args[0], sub_args[1]))
     elif subcommand == "cluster":
@@ -1038,19 +1038,19 @@ def run(args, vault, config=None):
         print(_cmd_dump(graph))
     elif subcommand == "impact-batch":
         if not sub_args:
-            print("Uso: python3 -m cli graph impact-batch <archivo1> <archivo2> ...", file=sys.stderr)
+            print("Usage: python3 -m cli graph impact-batch <file1> <file2> ...", file=sys.stderr)
             return 1
         for slug in sub_args:
             print(_cmd_impact(graph, slug, vault=vault))
             print("---")
     elif subcommand == "impact":
         if not sub_args:
-            print("Uso: python3 -m cli graph impact <archivo.md>", file=sys.stderr)
+            print("Usage: python3 -m cli graph impact <file.md>", file=sys.stderr)
             return 1
         print(_cmd_impact(graph, sub_args[0], vault=vault))
     else:
-        print(f"Subcomando desconocido: {subcommand}", file=sys.stderr)
-        print("Comandos: stats, orphans, hubs, backlinks, deps, tags, bridges, "
+        print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
+        print("Commands: stats, orphans, hubs, backlinks, deps, tags, bridges, "
               "dirs, types, cluster, path, dump, impact, suggest-edge-types", file=sys.stderr)
         return 1
 

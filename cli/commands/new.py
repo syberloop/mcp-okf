@@ -1,4 +1,4 @@
-"""Comando new — Crear un concepto nuevo en el vault OKF con formato consistente."""
+"""Command new — Create a new concept in the OKF vault with consistent formatting."""
 
 import re
 import sys
@@ -214,7 +214,7 @@ python3 <script> "<comando>" [timeout]
 
 
 def _slugify(text):
-    """Convierte título a slug para nombre de archivo."""
+    """Converts title to slug for filename."""
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = text.lower()
@@ -224,16 +224,16 @@ def _slugify(text):
 
 
 def _parse_links(links):
-    """Parsea flags --link 'target:type' a lista de dicts.
+    """Parse --link 'target:type' flags into a list of dicts.
 
     Args:
-        links: list[str] | None — cada elemento es "target:type".
+        links: list[str] | None — each element is "target:type".
 
     Returns:
         list[dict]: [{"target": "path.md", "type": "edge_type"}, ...]
 
     Raises:
-        ValueError: Si el formato es inválido.
+        ValueError: If the format is invalid.
     """
     if not links:
         return []
@@ -241,26 +241,26 @@ def _parse_links(links):
     for raw in links:
         if ":" not in raw:
             raise ValueError(
-                f"Formato inválido: '{raw}'. Usar 'target:type' "
-                f"(ej: frameworks/tp3-cibernetico:extiende)"
+                f"Invalid format: '{raw}'. Use 'target:type' "
+                f"(e.g.: frameworks/tp3-cibernetico:extiende)"
             )
         target, edge_type = raw.rsplit(":", 1)
         target = target.strip()
         edge_type = edge_type.strip()
         if not target:
-            raise ValueError(f"Target vacío en: '{raw}'")
+            raise ValueError(f"Empty target in: '{raw}'")
         if not edge_type:
-            raise ValueError(f"Tipo vacío en: '{raw}'")
+            raise ValueError(f"Empty type in: '{raw}'")
         result.append({"target": target, "type": edge_type})
     return result
 
 
 def _build_frontmatter(concept_type, title, description, status, resource, tags,
                        cyber, links=None, config=None):
-    """Genera el bloque YAML del frontmatter.
+    """Generate the frontmatter YAML block.
 
     Args:
-        links: list[dict] | None — lista de {"target": str, "type": str}.
+        links: list[dict] | None — list of {"target": str, "type": str}.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S-05:00")
 
@@ -303,15 +303,15 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
         lines.append("  outcome: pending")
         lines.append(f"  review_on: {review_date}")
     elif cyber:
-        print(f"⚠️  --cyber ignorado: type '{concept_type}' no califica "
-              f"(solo {', '.join(sorted(cyber_types))})", file=sys.stderr)
+        print(f"⚠️  --cyber ignored: type '{concept_type}' does not qualify "
+              f"(only {', '.join(sorted(cyber_types))})", file=sys.stderr)
 
     lines.append("---")
     return "\n".join(lines) + "\n"
 
 
 def run(args, vault, config=None):
-    """Crea un concepto nuevo en el vault."""
+    """Create a new concept in the vault."""
     concept_type = getattr(args, "concept_type", None)
     title = getattr(args, "title", None)
     description = getattr(args, "description", None)
@@ -329,8 +329,8 @@ def run(args, vault, config=None):
     type_dir = dict(config.types_directory) if config else TYPE_DIR
 
     if concept_type not in valid_types:
-        print(f"❌ Type inválido: '{concept_type}'", file=sys.stderr)
-        print(f"   Válidos: {', '.join(sorted(valid_types))}", file=sys.stderr)
+        print(f"❌ Invalid type: '{concept_type}'", file=sys.stderr)
+        print(f"   Valid: {', '.join(sorted(valid_types))}", file=sys.stderr)
         return 1
 
     # Determinar directorio y nombre de archivo
@@ -345,7 +345,7 @@ def run(args, vault, config=None):
         filepath = vault / subdir / filename
 
     if filepath.exists():
-        print(f"❌ Ya existe: {filepath}", file=sys.stderr)
+        print(f"❌ Already exists: {filepath}", file=sys.stderr)
         return 1
 
     # --- Parsear y validar links (NUEVO) ---
@@ -370,8 +370,8 @@ def run(args, vault, config=None):
 
             if edge_type not in VALID_EDGE_TYPES:
                 print(
-                    f"❌ Tipo de arista inválido: '{edge_type}'. "
-                    f"Usar: {', '.join(sorted(VALID_EDGE_TYPES))}",
+                    f"❌ Invalid edge type: '{edge_type}'. "
+                    f"Use: {', '.join(sorted(VALID_EDGE_TYPES))}",
                     file=sys.stderr,
                 )
                 return 1
@@ -389,8 +389,8 @@ def run(args, vault, config=None):
 
             if resolved is None or resolved not in graph:
                 print(
-                    f"❌ Link inválido: '{target}' no existe en el grafo. "
-                    f"El target debe ser un nodo existente.",
+                    f"❌ Invalid link: '{target}' does not exist in the graph. "
+                    f"The target must be an existing node.",
                     file=sys.stderr,
                 )
                 return 1
@@ -402,7 +402,7 @@ def run(args, vault, config=None):
             key = (link["target"], link["type"])
             if key in seen:
                 print(
-                    f"❌ Link duplicado: target='{link['target']}' "
+                    f"❌ Duplicate link: target='{link['target']}' "
                     f"type='{link['type']}'",
                     file=sys.stderr,
                 )
@@ -423,7 +423,7 @@ def run(args, vault, config=None):
         try:
             body_text = Path(body_file).read_text(encoding="utf-8")
         except Exception as e:
-            print(f"❌ Error leyendo body-file: {e}", file=sys.stderr)
+            print(f"❌ Error reading body-file: {e}", file=sys.stderr)
             return 1
     if body_text:
         body = f"\n{body_text.strip()}\n"
@@ -442,9 +442,9 @@ def run(args, vault, config=None):
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(content, encoding="utf-8")
 
-    print(f"✅ Creado: {filepath}")
-    print(f"   Type: {concept_type} | Status: {status or '(sin status)'}")
+    print(f"✅ Created: {filepath}")
+    print(f"   Type: {concept_type} | Status: {status or '(no status)'}")
     if cyber and concept_type in (set(config.types_cyber) if config else CYBER_TYPES):
-        print(f"   🧠 Bloque cyber: incluido (outcome: pending, review_on: +{config.cyber_review_days if config else 14}d)")
-    print(f"\n   Siguiente paso: editar body y hacer commit.")
+        print(f"   🧠 Cyber block: included (outcome: pending, review_on: +{config.cyber_review_days if config else 14}d)")
+    print(f"\n   Next step: edit body and commit.")
     return 0

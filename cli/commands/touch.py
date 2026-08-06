@@ -1,4 +1,4 @@
-"""Comando touch — Incrementar contador reads o mostrar estadísticas."""
+"""touch command — Increment reads counter or show statistics."""
 
 import re
 import sys
@@ -7,7 +7,7 @@ from cli.frontmatter import increment_reads
 
 
 def _show_stats(vault):
-    """Muestra stats de lecturas de todo el vault."""
+    """Show read stats for the entire vault."""
     from cli.vault import find_md_files
 
     results = []
@@ -23,13 +23,13 @@ def _show_stats(vault):
         results.append((str(md_file.relative_to(vault)), reads))
 
     if not results:
-        print("(sin conceptos)")
+        print("(no concepts)")
         return 0
 
     results.sort(key=lambda x: x[1], reverse=True)
     total = sum(r[1] for r in results)
 
-    print(f"{'ARCHIVO':<55} READS")
+    print(f"{'FILE':<55} READS")
     print("-" * 65)
     for path, reads in results:
         bar = "█" * min(reads, 40) if reads > 0 else ""
@@ -40,13 +40,13 @@ def _show_stats(vault):
 
 
 def run(args, vault, config=None):
-    """Incrementa contador de lecturas o muestra estadísticas."""
+    """Increment reads counter or show statistics."""
     if getattr(args, "all", False):
         return _show_stats(vault)
 
     target = getattr(args, "target", None)
     if not target:
-        print("Uso: python3 -m cli touch <concepto> [--all]", file=sys.stderr)
+        print("Usage: python3 -m cli touch <concept> [--all]", file=sys.stderr)
         return 1
 
     # Buscar el archivo
@@ -62,9 +62,9 @@ def run(args, vault, config=None):
         if len(candidates) == 1:
             filepath = candidates[0]
         else:
-            print(f"No encontrado: {target}", file=sys.stderr)
+            print(f"Not found: {target}", file=sys.stderr)
             if candidates:
-                print("Coincidencias:", file=sys.stderr)
+                print("Matches:", file=sys.stderr)
                 for c in candidates[:10]:
                     print(f"  {c.relative_to(vault)}", file=sys.stderr)
             return 1

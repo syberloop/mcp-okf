@@ -30,7 +30,7 @@ class ServerPersistenceTests(unittest.TestCase):
         self.assertIn("[timeout]", output)
         with sqlite3.connect(server.DB_PATH) as conn:
             row = conn.execute("SELECT tool, exit_code, error FROM events").fetchone()
-        self.assertEqual(row, ("okf_health", 124, "Timeout después de 30s"))
+        self.assertEqual(row, ("okf_health", 124, "Timeout after 30s"))
 
         event = json.loads(server.JSONL_PATH.read_text(encoding="utf-8"))
         self.assertEqual(event["exit_code"], 124)
@@ -38,13 +38,13 @@ class ServerPersistenceTests(unittest.TestCase):
     def test_created_path_is_relative_to_vault(self):
         result = SimpleNamespace(
             returncode=0,
-            stdout="✅ Creado: /home/jota/OKF-Vault/insights/new.md\n",
+            stdout="✅ Created: /home/jota/OKF-Vault/insights/new.md\n",
         )
         self.assertEqual(server._extract_created_path(result), "insights/new.md")
 
     def test_search_persists_all_filter_parameters(self):
         with patch.object(server, "_run", return_value="ok") as run:
-            server.okf_search(
+            server.search(
                 query="agent", type="Insight", status="propuesta",
                 cyber_field="outcome", cyber_value="pending",
                 todos=True, json_output=True,

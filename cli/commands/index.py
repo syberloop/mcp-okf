@@ -1,4 +1,4 @@
-"""Comando index — Regenerar index.md y log.md para el vault OKF."""
+"""Command index — Regenerate index.md and log.md for the OKF vault."""
 
 import subprocess
 import sys
@@ -11,7 +11,7 @@ _MAX_FIELD_LENGTH = 600
 
 
 def _extract_frontmatter_field(md_path, field):
-    """Extrae un campo del frontmatter YAML, con soporte multilínea."""
+    """Extracts a field from YAML frontmatter, with multiline support."""
     try:
         text = md_path.read_text(encoding="utf-8")
         if not text.startswith("---"):
@@ -74,7 +74,7 @@ def _extract_frontmatter_field(md_path, field):
 
 
 def _extract_frontmatter_field_no_cap(md_path, field):
-    """Extrae un campo del frontmatter YAML sin límite de longitud (para warnings)."""
+    """Extracts a YAML frontmatter field without length limit (for warnings)."""
     try:
         text = md_path.read_text(encoding="utf-8")
         if not text.startswith("---"):
@@ -122,7 +122,7 @@ def _extract_frontmatter_field_no_cap(md_path, field):
 
 
 def _extract_body_description(md_path):
-    """Extrae la primera línea después del título como descripción."""
+    """Extracts the first line after the title as description."""
     try:
         content = md_path.read_text(encoding="utf-8")
         if content.startswith("---"):
@@ -149,16 +149,16 @@ def _extract_body_description(md_path):
 
 
 def _get_dir_description(parent_dir, dirname):
-    """Obtiene la descripción de un subdirectorio desde su index.md.
+    """Gets the description of a subdirectory from its index.md.
 
     Args:
-        parent_dir: Path del directorio padre.
-        dirname: Nombre del subdirectorio.
+        parent_dir: Path of the parent directory.
+        dirname: Name of the subdirectory.
 
-    Prioridad:
-    1. Campo 'description' en frontmatter del index.md
-    2. Primera línea de contenido después del título (body), si no es un link
-    3. \"\" si no hay nada útil
+    Priority:
+    1. 'description' field in index.md frontmatter
+    2. First line of content after the title (body), if not a link
+    3. \"\" if nothing useful
     """
     index_path = parent_dir / dirname / "index.md"
     if not index_path.exists():
@@ -175,7 +175,7 @@ def _get_dir_description(parent_dir, dirname):
 
 
 def _find_concept_dirs(vault):
-    """Encuentra directorios que contienen conceptos o subdirectorios con conceptos."""
+    """Finds directories containing concepts or subdirectories with concepts."""
     exclude_dirs = {".git", ".obsidian", "Templates", "scripts", "templates"}
     concept_dirs = []
     for d in sorted(vault.rglob("*")):
@@ -203,7 +203,7 @@ def _find_concept_dirs(vault):
 
 
 def _find_all_content_dirs(vault):
-    """Encuentra directorios con contenido para el index raíz."""
+    """Finds directories with content for the root index."""
     dirs = []
     for d in sorted(vault.iterdir()):
         if d.is_dir() and not d.name.startswith(".") and d.name not in (".git", ".obsidian"):
@@ -212,7 +212,7 @@ def _find_all_content_dirs(vault):
 
 
 def _generate_root_index(vault):
-    """Genera el index.md raíz, preservando secciones personalizadas existentes."""
+    """Generates the root index.md, preserving existing custom sections."""
     all_dirs = _find_all_content_dirs(vault)
     lines = [
         "# OKF-Vault", "",
@@ -227,7 +227,7 @@ def _generate_root_index(vault):
             lines.append(f"* [{dname}/]({dname}/index.md)")
             index_path = vault / dname / "index.md"
             if index_path.exists():
-                print(f"  🚨 SIN DESCRIPCIÓN: {dname}/ — AGREGAR description EN index.md", file=sys.stderr)
+                print(f"  🚨 MISSING DESCRIPTION: {dname}/ — ADD description IN index.md", file=sys.stderr)
 
     content = "\n".join(lines) + "\n"
 
@@ -258,7 +258,7 @@ def _generate_root_index(vault):
 
 
 def _generate_index(dir_path, vault):
-    """Genera index.md para un directorio."""
+    """Generates index.md for a directory."""
     name = dir_path.name
     # Título: usar el nombre capitalizado, pero si es subdirectorio, incluir contexto del padre
     title = name.capitalize()
@@ -300,7 +300,7 @@ def _generate_index(dir_path, vault):
                 # Check if description exists but was too long (silently dropped by cap)
                 raw = _extract_frontmatter_field_no_cap(f, "description")
                 if raw and len(raw) > _MAX_FIELD_LENGTH:
-                    print(f"  🚨 DESCRIPTION LARGA: {f.relative_to(vault)} — {len(raw)} chars (máx {_MAX_FIELD_LENGTH}). ¡TRUNCAR!", file=sys.stderr)
+                    print(f"  🚨 LONG DESCRIPTION: {f.relative_to(vault)} — {len(raw)} chars (max {_MAX_FIELD_LENGTH}). TRUNCATE!", file=sys.stderr)
             concepts.append((f.name, desc, status))
 
     if concepts:
@@ -336,13 +336,13 @@ def _generate_index(dir_path, vault):
                 lines.append(f"* [{dname}/]({dname}/index.md)")
                 index_path = dir_path / dname / "index.md"
                 if index_path.exists():
-                    print(f"  ⚠️  {(dir_path / dname).relative_to(vault)}/ — sin descripción en index.md", file=sys.stderr)
+                    print(f"  ⚠️  {(dir_path / dname).relative_to(vault)}/ — no description in index.md", file=sys.stderr)
 
     return "\n".join(lines) + "\n"
 
 
 def _generate_log(vault):
-    """Genera log.md desde git history."""
+    """Generates log.md from git history."""
     try:
         result = subprocess.run(
             ["git", "-C", str(vault), "log", "--oneline", "--date=short",
@@ -350,10 +350,10 @@ def _generate_log(vault):
             capture_output=True, text=True, timeout=10,
         )
     except Exception:
-        return "# Update Log\n\n*No se pudo leer git history.*\n"
+        return "# Update Log\n\n*Could not read git history.*\n"
 
     if result.returncode != 0:
-        return "# Update Log\n\n*No se pudo leer git history.*\n"
+        return "# Update Log\n\n*Could not read git history.*\n"
 
     lines = ["# Update Log", ""]
     current_date = None
@@ -375,13 +375,13 @@ def _generate_log(vault):
         lines.append(f"* `{commit_hash}` — {message}")
 
     if len(lines) == 2:
-        lines.append("*No hay commits todavía.*")
+        lines.append("*No commits yet.*")
 
     return "\n".join(lines) + "\n"
 
 
 def run(args, vault, config=None):
-    """Regenera index.md y log.md."""
+    """Regenerates index.md and log.md."""
     regenerated = []
 
     # 1. Índices de directorios con conceptos — ordenar por profundidad (hijos primero)
@@ -407,5 +407,5 @@ def run(args, vault, config=None):
     for f in regenerated:
         print(f"  ✓ {f}")
 
-    print(f"\n✅ {len(regenerated)} archivos regenerados.")
+    print(f"\n✅ {len(regenerated)} files regenerated.")
     return 0

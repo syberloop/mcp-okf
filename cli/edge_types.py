@@ -1,15 +1,15 @@
-"""Definiciones formales de tipos de arista semántica para el grafo OKF.
+"""Formal definitions of semantic edge types for the OKF graph.
 
-Cada tipo de arista tiene propiedades formales que el validador y el suggester
-usan para detectar errores de categoría e inferir tipos faltantes.
+Each edge type has formal properties that the validator and suggester
+use to detect category errors and infer missing types.
 
-Propiedades:
-    description  — qué significa la arista
-    transitive   — si A→B y B→C implican A→C (arista virtual, no escrita)
-    symmetric    — si A→B implica B→A (ninguna lo es actualmente)
-    inverse      — nombre de la arista inversa (ej: extiende ↔ es_extendido_por)
-    valid_pairs  — tuplas (type_origen, type_destino) válidas.
-                   Lista vacía = sin restricción (aplica para "corrige").
+Properties:
+    description  — what the edge means
+    transitive   — whether A→B and B→C imply A→C (virtual edge, not written)
+    symmetric    — whether A→B implies B→A (none currently is)
+    inverse      — name of the inverse edge (e.g.: extiende ↔ es_extendido_por)
+    valid_pairs  — valid (source_type, target_type) tuples.
+                   Empty list = no restriction (applies to "corrige").
 """
 
 import re
@@ -97,15 +97,15 @@ VALID_EDGE_TYPES = frozenset(EDGE_TYPE_DEFINITIONS.keys())
 
 
 def suggest_edge_type(type_origen: str, type_destino: str) -> tuple:
-    """Sugiere el edge_type más probable para un par de types.
+    """Suggests the most likely edge_type for a pair of types.
 
     Args:
-        type_origen: Type del nodo origen (ej: 'Insight').
-        type_destino: Type del nodo destino (ej: 'MarcoTeorico').
+        type_origen: Type of source node (e.g.: 'Insight').
+        type_destino: Type of target node (e.g.: 'MarcoTeorico').
 
     Returns:
-        tuple[str, str]: (edge_type, confianza) donde confianza ∈ {"ALTA", "MEDIA", "BAJA"}.
-        Si no hay sugerencia útil, retorna ("extiende", "BAJA").
+        tuple[str, str]: (edge_type, confidence) where confidence ∈ {"ALTA", "MEDIA", "BAJA"}.
+        If no useful suggestion, returns ("extiende", "BAJA").
     """
     matches = []
     for etype, defn in EDGE_TYPE_DEFINITIONS.items():
@@ -123,15 +123,15 @@ def suggest_edge_type(type_origen: str, type_destino: str) -> tuple:
 
 def validate_cross_type_pair(type_origen: str, type_destino: str,
                               edge_type: str) -> list:
-    """Valida un par (origen, destino, edge_type) contra EDGE_TYPE_DEFINITIONS.
+    """Validates a (source, target, edge_type) pair against EDGE_TYPE_DEFINITIONS.
 
-    Retorna lista de warnings (vacía si todo OK). La validación es solo
-    para warnings — no bloqueante.
+    Returns list of warnings (empty if all OK). Validation is only
+    for warnings — non-blocking.
 
-    Los warnings incluyen:
-    - Tipo de arista desconocido.
-    - Par atípico: el par (origen_type, destino_type) no está en valid_pairs.
-    - Sugerencia de tipo alternativo si existe.
+    Warnings include:
+    - Unknown edge type.
+    - Atypical pair: the (source_type, target_type) pair is not in valid_pairs.
+    - Alternative type suggestion if one exists.
     """
     warnings = []
 
@@ -163,7 +163,7 @@ def validate_cross_type_pair(type_origen: str, type_destino: str,
 
 
 def _jaccard(set_a: set, set_b: set) -> float:
-    """Coeficiente de Jaccard entre dos sets. 0.0 si ambos vacíos."""
+    """Jaccard coefficient between two sets. 0.0 if both empty."""
     union = len(set_a | set_b)
     if union == 0:
         return 0.0
@@ -171,10 +171,10 @@ def _jaccard(set_a: set, set_b: set) -> float:
 
 
 def _desc_overlap(desc_a: str, desc_b: str) -> float:
-    """Overlap de términos significativos (≥4 chars, sin stopwords) entre dos descripciones.
+    """Overlap of significant terms (≥4 chars, no stopwords) between two descriptions.
 
-    Usa bigramas de palabras para capturar frases cortas además de términos individuales.
-    Retorna 0.0-1.0.
+    Uses word bigrams to capture short phrases in addition to individual terms.
+    Returns 0.0-1.0.
     """
     if not desc_a or not desc_b:
         return 0.0
@@ -213,27 +213,27 @@ def score_edge(
     target_desc: str,
     precedent_ratio: float = 0.0,
 ) -> float:
-    """Score numérico 0.0-1.0 para una arista tipada basado en 4 señales semánticas.
+    """Numeric score 0.0-1.0 for a typed edge based on 4 semantic signals.
 
     Args:
-        source_type: Type del nodo origen (ej: 'Insight').
-        target_type: Type del nodo destino (ej: 'MarcoTeorico').
-        edge_type: Tipo de arista (ej: 'extiende').
-        source_tags: Lista de tags del nodo origen.
-        target_tags: Lista de tags del nodo destino.
-        source_desc: Description del nodo origen.
-        target_desc: Description del nodo destino.
-        precedent_ratio: Ratio 0.0-1.0 de precedentes en el grafo
-                        (cuántos otros nodos con el mismo type-pair usan este edge_type).
+        source_type: Type of source node (e.g.: 'Insight').
+        target_type: Type of target node (e.g.: 'MarcoTeorico').
+        edge_type: Edge type (e.g.: 'extiende').
+        source_tags: List of tags of source node.
+        target_tags: List of tags of target node.
+        source_desc: Description of source node.
+        target_desc: Description of target node.
+        precedent_ratio: Ratio 0.0-1.0 of precedents in the graph
+                        (how many other nodes with the same type-pair use this edge_type).
 
     Returns:
-        float: Score 0.0-1.0 donde >0.7 es fuerte, <0.4 es débil.
+        float: Score 0.0-1.0 where >0.7 is strong, <0.4 is weak.
 
-    Señales:
-        1. Structural fit (0.40): ¿el par está en valid_pairs del edge_type?
-        2. Tag overlap (0.25): Jaccard entre tags de source y target.
-        3. Description similarity (0.20): Overlap de términos significativos.
-        4. Graph precedent (0.15): Precedentes en el grafo.
+    Signals:
+        1. Structural fit (0.40): is the pair in the edge_type's valid_pairs?
+        2. Tag overlap (0.25): Jaccard between source and target tags.
+        3. Description similarity (0.20): Overlap of significant terms.
+        4. Graph precedent (0.15): Precedents in the graph.
     """
     score = 0.0
 

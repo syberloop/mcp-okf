@@ -1,24 +1,24 @@
-"""Comando trace — Rastrear referencias en todas las capas del ecosistema OKF.
+"""Command trace — Trace references across all layers of the OKF ecosystem.
 
-Busca una query en:
-    1. vault     — wikilinks (backlinks) + contenido (grep)
+Searches a query in:
+    1. vault     — wikilinks (backlinks) + content (grep)
     2. code      — ~/.hermes/mcp-servers/okf/**/*.py
     3. hooks     — .git/hooks/*
     4. cron      — sistema/cron/* + sistema/hermes-cron-jobs/*
     5. agents    — AGENTS.md, CLAUDE.md, .claude/*.md
 
-Uso: python3 -m cli trace <query> [--layers vault,code,hooks,cron,agents]
+Usage: python3 -m cli trace <query> [--layers vault,code,hooks,cron,agents]
 """
 
 import sys
 from pathlib import Path
 
-# Capas disponibles
+# Available layers
 LAYERS = ["vault", "code", "hooks", "cron", "agents"]
 
 
 def _grep_dir(directory: Path, pattern: str, glob: str = "*") -> list[tuple[str, int, str]]:
-    """Busca pattern en archivos de un directorio. Retorna [(path, line_num, line), ...]."""
+    """Searches pattern in files of a directory. Returns [(path, line_num, line), ...]."""
     results = []
     if not directory.exists():
         return results
@@ -35,7 +35,7 @@ def _grep_dir(directory: Path, pattern: str, glob: str = "*") -> list[tuple[str,
 
 
 def _grep_file(filepath: Path, pattern: str) -> list[tuple[str, int, str]]:
-    """Busca pattern en un archivo. Retorna [(path, line_num, line), ...]."""
+    """Searches pattern in a file. Returns [(path, line_num, line), ...]."""
     results = []
     if not filepath.exists():
         return results
@@ -49,7 +49,7 @@ def _grep_file(filepath: Path, pattern: str) -> list[tuple[str, int, str]]:
 
 
 def _search_vault_wikilinks(vault, query):
-    """Busca wikilinks y backlinks que contienen query."""
+    """Searches wikilinks and backlinks containing query."""
     from cli.commands.graph import build_graph
     graph = build_graph(vault)
     results = []
@@ -67,7 +67,7 @@ def _search_vault_wikilinks(vault, query):
 
 
 def _search_vault_content(vault, query):
-    """Busca query en archivos .md del vault (excluyendo index.md, log.md)."""
+    """Searches query in .md files of the vault (excluding index.md, log.md)."""
     results = []
     for f in sorted(vault.rglob("*.md")):
         if f.name in ("index.md", "log.md", "dashboard.md"):
@@ -85,10 +85,10 @@ def _search_vault_content(vault, query):
 
 
 def run(args, vault, config=None):
-    """Rastrea referencias a una query en las capas del ecosistema OKF."""
+    """Traces references to a query across the OKF ecosystem layers."""
     query = getattr(args, "query", None)
     if not query:
-        print("Uso: python3 -m cli trace <query> [--layers vault,code,hooks,cron,agents]", file=sys.stderr)
+        print("Usage: python3 -m cli trace <query> [--layers vault,code,hooks,cron,agents]", file=sys.stderr)
         return 1
 
     layers_str = getattr(args, "layers", "vault,code,hooks,cron,agents")
@@ -108,19 +108,19 @@ def run(args, vault, config=None):
                 for r in wl_results[:30]:
                     print(r)
                 if len(wl_results) > 30:
-                    print(f"  ... +{len(wl_results) - 30} más")
+                    print(f"  ... +{len(wl_results) - 30} more")
 
             # Contenido
             content_results = _search_vault_content(vault_root, query)
             if content_results:
-                print("  [contenido]")
+                print("  [content]")
                 for path, line_num, line in content_results[:30]:
                     print(f"  {path}:{line_num}  {line[:120]}")
                 if len(content_results) > 30:
-                    print(f"  ... +{len(content_results) - 30} más")
+                    print(f"  ... +{len(content_results) - 30} more")
 
             if not wl_results and not content_results:
-                print("  (sin resultados)")
+                print("  (no results)")
 
         elif layer == "code":
             results = _grep_dir(mcp_dir, query, "*.py")
@@ -133,9 +133,9 @@ def run(args, vault, config=None):
                         rel = path
                     print(f"  {rel}:{line_num}  {line[:120]}")
                 if len(results) > 30:
-                    print(f"  ... +{len(results) - 30} más")
+                    print(f"  ... +{len(results) - 30} more")
             else:
-                print("  (sin resultados)")
+                print("  (no results)")
 
         elif layer == "hooks":
             hooks_dir = vault_root / ".git" / "hooks"
@@ -144,7 +144,7 @@ def run(args, vault, config=None):
                 for path, line_num, line in results:
                     print(f"  {Path(path).name}:{line_num}  {line[:120]}")
             else:
-                print("  (sin resultados)")
+                print("  (no results)")
 
         elif layer == "cron":
             cron_dirs = [
@@ -162,7 +162,7 @@ def run(args, vault, config=None):
                         rel = path
                     print(f"  {rel}:{line_num}  {line[:120]}")
             if not found:
-                print("  (sin resultados)")
+                print("  (no results)")
 
         elif layer == "agents":
             agent_files = [
@@ -180,7 +180,7 @@ def run(args, vault, config=None):
                     found = True
                     print(f"  {Path(path).name}:{line_num}  {line[:120]}")
             if not found:
-                print("  (sin resultados)")
+                print("  (no results)")
 
     print()
     return 0

@@ -191,9 +191,9 @@ links:
         graph = build_graph(self.vault)
         tag_index = {}
         output = _cmd_stats(graph, tag_index)
-        self.assertIn("Aristas (tipadas): 1", output)
-        self.assertIn("Aristas (wikilinks): 2", output)
-        self.assertIn("Aristas totales: 3", output)
+        self.assertIn("Edges (typed): 1", output)
+        self.assertIn("Edges (wikilinks): 2", output)
+        self.assertIn("Total edges: 3", output)
 
 
 if __name__ == "__main__":

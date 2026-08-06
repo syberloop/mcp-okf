@@ -1,15 +1,15 @@
-"""Configuración externalizada de MCP OKF.
+"""Externalized configuration for MCP OKF.
 
-Resolución en cadena:
-    1. --config <path>               → argumento explícito del CLI
-    2. $OKF_CONFIG             → variable de entorno
-    3. <vault>/.okf.config.yaml       → junto al vault (95% de los casos)
-    4. ~/.config/okf/config.yaml → global del usuario
-    5. defaults embebidos            → réplica exacta de la configuración actual de Jaime
+Resolution chain:
+    1. --config <path>               → explicit CLI argument
+    2. $OKF_CONFIG             → environment variable
+    3. <vault>/.okf.config.yaml       → next to the vault (95% of cases)
+    4. ~/.config/okf/config.yaml → global user config
+    5. embedded defaults            → exact replica of Jaime's current configuration
 
-Principio: hardcodear reglas fundamentales del dominio, configurar lo que cambia.
-El contrato core (type + description + wikilinks) ES regla fundamental → hardcodeado.
-Taxonomía, umbrales, feature flags → configurables.
+Principle: hardcode fundamental domain rules, configure what changes.
+The core contract (type + description + wikilinks) IS a fundamental rule → hardcoded.
+Taxonomy, thresholds, feature flags → configurable.
 """
 
 import os
@@ -185,7 +185,7 @@ DEFAULTS: dict[str, Any] = {
 
 
 class Config:
-    """Configuración del MCP OKF, resuelta desde archivo o defaults."""
+    """Configuration for MCP OKF, resolved from file or defaults."""
 
     def __init__(self, vault: Path, cli_config_arg: str | None = None):
         self._vault = vault
@@ -193,7 +193,7 @@ class Config:
         self._load(cli_config_arg)
 
     def _load(self, cli_config_arg: str | None) -> None:
-        """Resuelve la cadena de configuración y mergea sobre defaults."""
+        """Resolves the config chain and merges over defaults."""
         import yaml
 
         config_path = self._resolve_path(cli_config_arg)
@@ -203,13 +203,13 @@ class Config:
                     user_config = yaml.safe_load(f) or {}
                 self._data = self._deep_merge(DEFAULTS, user_config)
             except Exception:
-                # YAML roto o archivo ilegible → usar defaults
+                # Broken YAML or unreadable file → use defaults
                 self._data = DEFAULTS
         else:
             self._data = DEFAULTS
 
     def _resolve_path(self, cli_config_arg: str | None) -> Path | None:
-        """Resuelve la ruta del archivo de configuración en cadena."""
+        """Resolves the config file path in chain."""
         # 1. Argumento explícito del CLI
         if cli_config_arg:
             path = Path(cli_config_arg)
@@ -239,7 +239,7 @@ class Config:
         return None
 
     def _deep_merge(self, base: dict, override: dict) -> dict:
-        """Merge recursivo: override pisa solo las claves que define."""
+        """Recursive merge: override only sets defined keys."""
         result = base.copy()
         for key, value in override.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
@@ -320,7 +320,7 @@ class Config:
         return bool(old_flag) if old_flag is not None else True
 
     def get_template(self, concept_type: str) -> str:
-        """Devuelve el template de body para un type, o uno genérico si no hay."""
+        """Returns the body template for a type, or a generic one if absent."""
         templates = self._data.get("templates", {})
         if isinstance(templates, dict):
             tmpl = templates.get(concept_type, "")

@@ -1,4 +1,4 @@
-"""Comando search — Buscar conceptos y tareas pendientes en el vault."""
+"""Command search — Search concepts and pending tasks in the vault."""
 
 import json
 import re
@@ -15,16 +15,16 @@ def _is_valid_frontmatter_key(key):
 
 
 def _extract_project(relative_parts):
-    """Extrae el proyecto/área de la ruta relativa del archivo."""
+    """Extracts the project/area from the file's relative path."""
     if len(relative_parts) <= 1:
-        return "raíz"
+        return "root"
     if relative_parts[0] == "clientes" and len(relative_parts) >= 3:
         return f"{relative_parts[0]}/{relative_parts[1]}"
     return relative_parts[0]
 
 
 def _get_git_blame_cache(vault, relpath):
-    """Ejecuta git blame por archivo y devuelve {line_num: (age_days, date_iso)}."""
+    """Runs git blame per file and returns {line_num: (age_days, date_iso)}."""
     try:
         result = subprocess.run(
             ["git", "-C", str(vault), "blame", "--line-porcelain", "--", relpath],
@@ -67,15 +67,15 @@ def _get_git_blame_cache(vault, relpath):
 
 
 def find_todos(vault, include_done=False, with_aging=False, include_specs=False, include_skills=False):
-    """Encuentra todos los - [ ] y - [x] en archivos del vault.
+    """Finds all - [ ] and - [x] in vault files.
 
-    Por defecto EXCLUYE archivos con type: Spec — sus checkboxes son
-    criterios de aceptación de un diseño (definen "done"), no tareas
-    ejecutables. Pasar include_specs=True para incluirlos explícitamente.
-    También EXCLUYE archivos con type: Skill — sus checkboxes son
-    checklists de auto-auditoría del procedimiento (criterios de calidad),
-    no tareas del backlog (decisión 2026-08-06).
-    Pasar include_skills=True para incluirlos explícitamente.
+    By default EXCLUDES files with type: Spec — their checkboxes are
+    design acceptance criteria (they define "done"), not executable
+    tasks. Pass include_specs=True to include them explicitly.
+    Also EXCLUDES files with type: Skill — their checkboxes are
+    procedure self-audit checklists (quality criteria),
+    not backlog items (decision 2026-08-06).
+    Pass include_skills=True to include them explicitly.
     """
     todos = []
     blame_cache = {}
@@ -144,7 +144,7 @@ def find_todos(vault, include_done=False, with_aging=False, include_specs=False,
 
 
 def find_agent_bus_signals():
-    """Escanea signals/→default/ en perfiles Hermes (si existen)."""
+    """Scans signals/→default/ in Hermes profiles (if they exist)."""
     agent_bus_base = Path.home() / ".hermes" / "profiles"
     signals_dir_suffix = Path("agent-bus") / "signals" / "→default"
     signals = []
@@ -191,7 +191,7 @@ def find_agent_bus_signals():
 
 
 def _sanitize_cyber(cyber):
-    """Convierte objetos date/datetime a strings para JSON."""
+    """Converts date/datetime objects to strings for JSON."""
     if cyber is None or not isinstance(cyber, dict):
         return None
     result = {}
@@ -213,7 +213,7 @@ def _sanitize_cyber(cyber):
 
 
 def find_concepts(vault):
-    """Encuentra todos los conceptos con frontmatter en el vault."""
+    """Finds all concepts with frontmatter in the vault."""
     concepts = []
     for md_file in find_md_files(vault):
         try:
@@ -248,7 +248,7 @@ def find_concepts(vault):
 
 
 def matches_query(concept, query):
-    """Verifica si un concepto coincide con la query (AND, case-insensitive)."""
+    """Checks if a concept matches the query (AND, case-insensitive)."""
     tokens = query.lower().split()
     if not tokens:
         return True
@@ -298,9 +298,9 @@ def matches_query(concept, query):
 
 
 def _print_todos(todos, with_aging=False):
-    """Imprime tareas pendientes agrupadas por proyecto."""
+    """Prints pending tasks grouped by project."""
     if not todos:
-        print("(sin tareas pendientes)")
+        print("(no pending tasks)")
         return
 
     by_project = {}
@@ -311,7 +311,7 @@ def _print_todos(todos, with_aging=False):
     stale_count = sum(1 for t in todos if t.get("age_status") == "stale")
     aging_count = sum(1 for t in todos if t.get("age_status") == "aging")
 
-    status_line = f"📋 Tareas pendientes ({total} encontradas)"
+    status_line = f"📋 Pending tasks ({total} found)"
     if with_aging:
         parts = []
         if stale_count:
@@ -350,13 +350,13 @@ def _print_todos(todos, with_aging=False):
             marker = "☑" if item.get("done") else "☐"
             print(f"  {prefix}{marker} {item['text']}{age_info}")
 
-    print(f"\n─ {total} tarea(s) en {len(by_project)} proyecto(s)")
+    print(f"\n─ {total} task(s) in {len(by_project)} project(s)")
 
 
 def _print_table(concepts):
-    """Imprime tabla formateada en texto."""
+    """Prints a formatted text table."""
     if not concepts:
-        print("(sin resultados)")
+        print("(no results)")
         return
 
     cols = {
@@ -366,10 +366,10 @@ def _print_table(concepts):
     }
 
     header = (
-        f"{'ARCHIVO':<{cols['file']}}  "
-        f"{'TIPO':<{cols['type']}}  "
+        f"{'FILE':<{cols['file']}}  "
+        f"{'TYPE':<{cols['type']}}  "
         f"{'STATUS':<{cols['status']}}  "
-        f"DESCRIPCIÓN"
+        f"DESCRIPTION"
     )
     sep = "─" * len(header)
     print(sep)
@@ -387,11 +387,11 @@ def _print_table(concepts):
         )
 
     print(sep)
-    print(f"{len(concepts)} concepto(s)")
+    print(f"{len(concepts)} concept(s)")
 
 
 def _find_typed_edges(concepts, vault):
-    """Encuentra aristas tipadas entre los conceptos del resultado."""
+    """Finds typed edges between result concepts."""
     result_paths = {c["file"] for c in concepts}
     edges = []
 
@@ -422,18 +422,18 @@ def _find_typed_edges(concepts, vault):
 
 
 def _print_typed_edges(edges):
-    """Imprime sección de relaciones detectadas."""
+    """Prints detected relationships section."""
     if not edges:
         return
     print()
-    print("## Relaciones detectadas")
+    print("## Detected relationships")
     for source, target, etype in edges:
         print(f"  {source}")
         print(f"    └─ {etype} → {target}")
 
 
 def run(args, vault, config=None):
-    """Ejecuta búsqueda de conceptos o tareas."""
+    """Runs concept or task search."""
     json_out = getattr(args, "json", False)
     todos_mode = getattr(args, "todos", False)
     include_all = getattr(args, "all", False)
@@ -450,13 +450,13 @@ def run(args, vault, config=None):
     with_graph = getattr(args, "with_graph", False)
 
     if with_aging and not todos_mode:
-        print("Error: --aging solo funciona con --todos", file=sys.stderr)
+        print("Error: --aging only works with --todos", file=sys.stderr)
         return 1
     if include_all and not todos_mode:
-        print("Error: --all solo funciona con --todos", file=sys.stderr)
+        print("Error: --all only works with --todos", file=sys.stderr)
         return 1
     if cyber_value and not cyber_field:
-        print("Error: --cyber-value requiere --cyber-field", file=sys.stderr)
+        print("Error: --cyber-value requires --cyber-field", file=sys.stderr)
         return 1
 
     if todos_mode:
@@ -522,7 +522,7 @@ def run(args, vault, config=None):
             if until_dt and until_dt.tzinfo is None:
                 until_dt = until_dt.replace(tzinfo=timezone.utc)
         except ValueError as e:
-            print(f"Error: fecha inválida — {e}", file=sys.stderr)
+            print(f"Error: invalid date — {e}", file=sys.stderr)
             return 1
         filtered = []
         for c in concepts:
@@ -555,6 +555,6 @@ def run(args, vault, config=None):
             if edges:
                 _print_typed_edges(edges)
             else:
-                print("\n(sin aristas tipadas entre los resultados)")
+                print("\n(no typed edges among results)")
 
     return 0

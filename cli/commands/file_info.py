@@ -1,10 +1,10 @@
-"""Comando file-info — Metadatos de fecha de un concepto del vault.
+"""file-info command — date metadata for a vault concept.
 
-Devuelve:
-    - created: fecha del primer commit en git (creación real)
-    - updated: fecha del último commit en git (última edición)
-    - timestamp: valor del campo 'timestamp' en frontmatter (last meaningful change)
-    - created_fm: valor del campo 'created' en frontmatter (fecha de creación OKF)
+Returns:
+    - created: date of the first commit in git (real creation)
+    - updated: date of the last commit in git (last edit)
+    - timestamp: value of the 'timestamp' field in frontmatter (last meaningful change)
+    - created_fm: value of the 'created' field in frontmatter (OKF creation date)
 """
 
 import json
@@ -16,12 +16,12 @@ from cli.frontmatter import parse_frontmatter
 
 
 def _get_git_dates(vault, relpath):
-    """Obtiene created (primer commit) y updated (último commit) desde git."""
+    """Gets created (first commit) and updated (last commit) from git."""
     created = None
     updated = None
 
     try:
-        # Último commit
+        # Last commit
         result = subprocess.run(
             ["git", "-C", str(vault), "log", "-1", "--format=%ai", "--", relpath],
             capture_output=True, text=True, timeout=10,
@@ -29,7 +29,7 @@ def _get_git_dates(vault, relpath):
         if result.returncode == 0 and result.stdout.strip():
             updated = result.stdout.strip()
 
-        # Primer commit
+        # First commit
         result = subprocess.run(
             ["git", "-C", str(vault), "log", "--diff-filter=A", "--follow",
              "--format=%ai", "--", relpath],
@@ -48,7 +48,7 @@ def run(args, vault, config=None):
     json_out = getattr(args, "json", False)
 
     if not slug:
-        print("Error: --slug es requerido", file=sys.stderr)
+        print("Error: --slug is required", file=sys.stderr)
         return 1
 
     # Resolver el archivo
@@ -57,7 +57,7 @@ def run(args, vault, config=None):
         # Intentar con .md
         md_file = vault / f"{slug}.md"
     if not md_file.exists():
-        print(f"Error: archivo no encontrado: {slug}", file=sys.stderr)
+        print(f"Error: file not found: {slug}", file=sys.stderr)
         return 1
 
     relpath = str(md_file.relative_to(vault))
@@ -66,7 +66,7 @@ def run(args, vault, config=None):
     try:
         text = md_file.read_text(encoding="utf-8")
     except Exception as e:
-        print(f"Error: no se pudo leer {relpath}: {e}", file=sys.stderr)
+        print(f"Error: could not read {relpath}: {e}", file=sys.stderr)
         return 1
 
     fm, _ = parse_frontmatter(text)

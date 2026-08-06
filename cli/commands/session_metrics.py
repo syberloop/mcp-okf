@@ -1,4 +1,4 @@
-"""Comando session-metrics — Métricas agregadas de sesiones del vault."""
+"""Command session-metrics — Aggregated session metrics of the vault."""
 
 import re
 import json
@@ -7,7 +7,7 @@ from datetime import datetime
 
 
 def _parse_metrics_section(body):
-    """Extrae métricas de la sección ## Métricas en el body."""
+    """Extracts metrics from the ## Metrics section in the body."""
     metrics = {}
     m = re.search(r"## Métricas\n(.+)", body, re.DOTALL)
     if not m:
@@ -50,10 +50,10 @@ def _parse_metrics_section(body):
 
 
 def run(args, vault, config=None):
-    """Genera métricas agregadas de todas las sesiones."""
+    """Generates aggregated metrics of all sessions."""
     sesiones_dir = vault / "sesiones"
     if not sesiones_dir.exists():
-        print("(sin sesiones)")
+        print("(no sessions)")
         return 0
     
     sessions = []
@@ -103,25 +103,25 @@ def run(args, vault, config=None):
     # Total conceptos
     total_conceptos = sum(s["metrics"].get("conceptos_creados", 0) for s in sessions)
     
-    print(f"📊 Métricas de sesiones — {total} sesiones, {con_metricas} con métricas")
+    print(f"📊 Session metrics — {total} sessions, {con_metricas} with metrics")
     print()
-    print(f"Infracciones MCP totales: {total_infracciones} (en {con_infracciones} sesiones)")
-    print(f"Conceptos creados: {total_conceptos}")
+    print(f"Total MCP violations: {total_infracciones} (in {con_infracciones} sessions)")
+    print(f"Concepts created: {total_conceptos}")
     print()
     
     if top_tools:
-        print("Tools más usadas:")
+        print("Most used tools:")
         for tool, count in top_tools:
             print(f"  {tool}: {count}")
     
     if con_infracciones > 0:
         print()
-        print("🪞 Sesiones con infracciones:")
+        print("🪞 Sessions with violations:")
         for s in sessions:
             inf = s["metrics"].get("infracciones", 0)
             if inf > 0:
                 detalles = s["metrics"].get("infracciones_detalle", [])
                 det_str = " — " + ", ".join(detalles[:3]) if detalles else ""
-                print(f"  {s['date']} | {s['session_id'][:20]} | {inf} infracción(es){det_str}")
+                print(f"  {s['date']} | {s['session_id'][:20]} | {inf} violation(s){det_str}")
     
     return 0

@@ -1,23 +1,23 @@
-"""Comando traverse — Travesía semántica del grafo del vault OKF.
+"""Command traverse — Semantic traversal of the OKF vault graph.
 
-Recorre el grafo desde un concepto origen, siguiendo wikilinks (out + in),
-aristas tipadas (links: en frontmatter) y aristas causales
-(cyber.corrects / cyber.corrected_by), hasta la profundidad indicada. En cada nodo visitado, devuelve solo el frontmatter — no el body.
+Walks the graph from a source concept, following wikilinks (out + in),
+typed edges (links: in frontmatter) and causal edges
+(cyber.corrects / cyber.corrected_by), up to the indicated depth. At each visited node, returns only the frontmatter — not the body.
 
-Esto permite navegación semántica eficiente: en una sola llamada se obtiene
-el vecindario de un concepto sin leer N archivos completos.
+This enables efficient semantic navigation: in a single call you get
+a concept's neighborhood without reading N complete files.
 
-Uso:
-    python3 -m cli traverse <concepto> [--depth N] [--json]
+Usage:
+    python3 -m cli traverse <concept> [--depth N] [--json]
                                     [--direction both|out|in] [--no-cyber]
-                                    [--edge-type <tipo>] [--filter]
+                                    [--edge-type <type>] [--filter]
 
-Semántica (Decisión "Cada traverse es una búsqueda ontológica", 2026-08-01):
-    --edge-type declara la intención ontológica (anotación). Por defecto NO
-    filtra: devuelve el vecindario completo etiquetado, ordenando primero las
-    aristas del tipo declarado. El superset nunca se pierde.
-    --filter convierte el edge_type en exclusión: solo aristas de ese tipo
-    (comportamiento previo, para consultas que piden un solo tipo).
+Semantics (Decision "Every traverse is an ontological search", 2026-08-01):
+    --edge-type declares ontological intent (annotation). By default does NOT
+    filter: returns the full labeled neighborhood, sorting edges of the declared
+    type first. The superset is never lost.
+    --filter turns edge_type into exclusion: only edges of that type
+    (previous behavior, for queries asking for a single type).
 """
 
 import json
@@ -29,10 +29,10 @@ from cli.commands.graph import build_graph, _resolve_name
 
 
 def _get_frontmatter_summary(filepath):
-    """Extrae solo el frontmatter de un archivo .md (sin el body).
+    """Extracts only the frontmatter of a .md file (without the body).
 
     Returns:
-        dict|None: Campos clave para scaneo semántico, o None si no hay frontmatter.
+        dict|None: Key fields for semantic scanning, or None if no frontmatter.
     """
     try:
         text = filepath.read_text(encoding="utf-8")
@@ -52,7 +52,7 @@ def _get_frontmatter_summary(filepath):
 
 
 def _get_cyber_edges(filepath):
-    """Extrae aristas causales del bloque cyber: de un concepto.
+    """Extracts causal edges from the cyber: block of a concept.
 
     Returns:
         tuple[list[str], list[str]]: (corrects, corrected_by)
@@ -80,13 +80,13 @@ def _get_cyber_edges(filepath):
 
 
 def _resolve_cyber_ref(ref, vault, name_index):
-    """Resuelve una referencia cyber (nombre de archivo o wikilink) a ruta relativa.
+    """Resolves a cyber reference (filename or wikilink) to a relative path.
 
-    cyber.corrects puede contener:
-    - Nombres de archivo sin extensión: "decision-0042"
-    - Nombres con extensión: "decision-0042.md"
+    cyber.corrects can contain:
+    - Filenames without extension: "decision-0042"
+    - Filenames with extension: "decision-0042.md"
     - Wikilinks: "[[decision-0042]]"
-    - Rutas relativas: "decisions/decision-0042.md"
+    - Relative paths: "decisions/decision-0042.md"
     """
     ref = ref.strip()
     if not ref:
@@ -124,13 +124,13 @@ def _resolve_cyber_ref(ref, vault, name_index):
 
 
 def run(args, vault, config=None):
-    """Ejecuta travesía semántica del grafo desde uno o varios orígenes."""
+    """Runs semantic graph traversal from one or more origins."""
     target = getattr(args, "target", None)
     seeds_raw = getattr(args, "seeds", None)
 
     # Al menos uno de target o --seeds debe estar presente
     if not target and not seeds_raw:
-        print("Uso: python3 -m cli traverse <concepto> [--depth N] [--json] "
+        print("Usage: python3 -m cli traverse <concept> [--depth N] [--json] "
               "[--direction both|out|in] [--no-cyber]\n"
               "      python3 -m cli traverse --seeds <c1> <c2> [...] [--depth N] [...]",
               file=sys.stderr)
@@ -149,7 +149,7 @@ def run(args, vault, config=None):
     edge_type_filter = getattr(args, "edge_type", None)
     filter_mode = getattr(args, "filter", False)  # --filter: edge_type excluye (default: anotación)
     if filter_mode and not edge_type_filter:
-        print("⚠️  --filter sin --edge-type: no filtra nada. Usá --edge-type <tipo> --filter.",
+        print("⚠️  --filter without --edge-type: does not filter anything. Use --edge-type <type> --filter.",
               file=sys.stderr)
 
     # Construir grafo de wikilinks (ya resuelve todos los links)
@@ -162,10 +162,10 @@ def run(args, vault, config=None):
     for seed_candidate in seeds_candidates:
         resolved = _resolve_name(seed_candidate, graph)
         if resolved is None:
-            warnings.append(f"No encontrado: {seed_candidate}")
+            warnings.append(f"Not found: {seed_candidate}")
         elif resolved in resolved_seeds:
             warnings.append(
-                f"Semilla duplicada ignorada: {seed_candidate} -> {resolved}"
+                f"Duplicate seed ignored: {seed_candidate} -> {resolved}"
             )
         else:
             resolved_seeds.append(resolved)
@@ -174,7 +174,7 @@ def run(args, vault, config=None):
     if not resolved_seeds:
         for w in warnings:
             print(f"✗ {w}", file=sys.stderr)
-        print("Error: ninguna semilla pudo resolverse.", file=sys.stderr)
+        print("Error: no seed could be resolved.", file=sys.stderr)
         return 1
 
     # BFS con detección de ciclos y visited set compartido entre seeds
@@ -304,13 +304,13 @@ def run(args, vault, config=None):
 
     # ── Output legible ──
     if len(resolved_seeds) == 1:
-        print(f"🔗 Travesía desde: {resolved_seeds[0]}")
+        print(f"🔗 Traversal from: {resolved_seeds[0]}")
     else:
-        print(f"🔗 Travesía desde {len(resolved_seeds)} semillas:")
+        print(f"🔗 Traversal from {len(resolved_seeds)} seeds:")
         for s in resolved_seeds:
             print(f"   📌 {s}")
-    print(f"   Profundidad: {depth} | Dirección: {direction} | "
-          f"Nodos: {len(nodes)}")
+    print(f"   Depth: {depth} | Direction: {direction} | "
+          f"Nodes: {len(nodes)}")
 
     if warnings:
         print()
@@ -323,8 +323,8 @@ def run(args, vault, config=None):
                    if n["from"] is not None and n["edge_type"] == edge_type_filter]
         edges_total = len([n for n in nodes if n["from"] is not None])
         print()
-        print(f"   🎯 Anotación: {edge_type_filter} — {len(matched)}/{edges_total} "
-              f"aristas del tipo declarado (superset completo conservado)")
+        print(f"   🎯 Annotation: {edge_type_filter} — {len(matched)}/{edges_total} "
+              f"edges of the declared type (full superset preserved)")
     elif not edge_type_filter:
         # ── Sugerencia ontológica (Nivel 2): si no se usó edge_type, sugerir ──
         typed_edge_types = {n["edge_type"] for n in nodes
@@ -334,11 +334,11 @@ def run(args, vault, config=None):
             et_list = ", ".join(sorted(typed_edge_types))
             typed_count = len([n for n in nodes if n["edge_type"] in typed_edge_types])
             print()
-            print(f"   💡 Tip: esta travesía incluye {typed_count} "
-                  f"aristas tipadas ({et_list}).")
-            print(f"   Para anotar el tipo explorado: --edge-type <tipo>")
-            print(f"   Para filtrar (exclusión): --edge-type <tipo> --filter")
-            print(f"   Ejemplo: traverse <slug> --edge-type extiende")
+            print(f"   💡 Tip: this traversal includes {typed_count} "
+                  f"typed edges ({et_list}).")
+            print(f"   To annotate the explored type: --edge-type <type>")
+            print(f"   To filter (exclusion): --edge-type <type> --filter")
+            print(f"   Example: traverse <slug> --edge-type extiende")
 
     print()
 
@@ -376,7 +376,7 @@ def run(args, vault, config=None):
             score_str = f" ({node.get('score', 0):.2f})" if node.get("score", 0) > 0 else ""
             print(f"{indent}   via {node['edge_type']}{score_str} ← {node['from']}")
         if len(resolved_seeds) > 1 and node.get("seed"):
-            print(f"{indent}   🌰 semilla: {node['seed']}")
+            print(f"{indent}   🌰 seed: {node['seed']}")
         print()
 
     return 0

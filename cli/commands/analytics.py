@@ -1,23 +1,23 @@
-"""Comando analytics — Consultas analíticas sobre eventos de Cognitive Trace.
+"""Command analytics — Analytical queries on Cognitive Trace events.
 
-Consulta la base SQLite de eventos del vault OKF para extraer patrones
-de uso, navegación y herramientas.
+Queries the SQLite events database of the OKF vault to extract patterns
+of usage, navigation and tools.
 
-Queries disponibles:
-  most_visited       — nodos más visitados (top N por traverses)
-  least_visited      — nodos con menos visitas
-  session_heatmap    — nodos más activos en la sesión actual (o --session-id)
-  tool_usage         — distribución de tools usadas
-  daily_activity     — actividad por día (eventos y sesiones)
-  node_timeline      — historial de visitas para un nodo (requiere --arg)
-  error_summary      — tools con errores
-  co_visited         — nodos visitados junto con --arg en una misma sesión
-  read_ratio         — proporción de reads vs traverses por nodo
-  session_diff       — nodos en sesión A que no están en B (--arg "A,B")
-  depth_stats        — distribución de profundidad de traverse
-  entry_points       — nodos más usados como entrada de traverse
-  prompts            — auto-segmentación de la sesión en prompts por gaps
-  edge_type_usage    — uso ontológico: traverses con edge_type vs sin (criterio decisión ≥50%)
+Available queries:
+  most_visited       — most visited nodes (top N by traverses)
+  least_visited      — least visited nodes
+  session_heatmap    — most active nodes in current session (or --session-id)
+  tool_usage         — distribution of tools used
+  daily_activity     — activity per day (events and sessions)
+  node_timeline      — visit history for a node (requires --arg)
+  error_summary      — tools with errors
+  co_visited         — nodes visited together with --arg in the same session
+  read_ratio         — reads vs traverses ratio per node
+  session_diff       — nodes in session A not in B (--arg "A,B")
+  depth_stats        — traverse depth distribution
+  entry_points       — most used traverse entry nodes
+  prompts            — auto-segmentation of session into prompts by gaps
+  edge_type_usage    — ontological usage: traverses with edge_type vs without (decision criterion ≥50%)
 """
 
 import sqlite3
@@ -33,7 +33,7 @@ _EDGE_TYPES_SQL = "(" + ",".join(f"'{t}'" for t in sorted(VALID_EDGE_TYPES)) + "
 # ── Helpers ──
 
 def _resolve_db_path(config) -> Path:
-    """Resuelve la ruta a la DB de Cognitive Trace desde config o default."""
+    """Resolves the path to the Cognitive Trace DB from config or default."""
     if config:
         db_path = config._data.get("features", {}).get("trace_db_path")
         if db_path:
@@ -42,7 +42,7 @@ def _resolve_db_path(config) -> Path:
 
 
 def _get_session_id() -> str:
-    """Intenta inferir el session_id actual desde el entorno."""
+    """Attempts to infer the current session_id from the environment."""
     import os
     sid = os.environ.get("OKF_SESSION_ID", "")
     if not sid:
@@ -58,10 +58,10 @@ def _query_most_visited(conn, limit):
         (limit,),
     ).fetchall()
     if not rows:
-        return "(sin datos — no se han registrado traverses aún)"
-    lines = [f"Top {len(rows)} nodos más visitados:"]
+        return "(no data — no traverses recorded yet)"
+    lines = [f"Top {len(rows)} most visited nodes:"]
     for r in rows:
-        lines.append(f"  {r['node']} — {r['visits']} visitas (última: {r['last_visit'][:10]})")
+        lines.append(f"  {r['node']} — {r['visits']} visits (last: {r['last_visit'][:10]})")
     return "\n".join(lines)
 
 
@@ -71,17 +71,17 @@ def _query_least_visited(conn, limit):
         (limit,),
     ).fetchall()
     if not rows:
-        return "(sin datos)"
-    lines = [f"Top {len(rows)} nodos menos visitados:"]
+        return "(no data)"
+    lines = [f"Top {len(rows)} least visited nodes:"]
     for r in rows:
-        lines.append(f"  {r['node']} — {r['visits']} visitas (última: {r['last_visit'][:10]})")
+        lines.append(f"  {r['node']} — {r['visits']} visits (last: {r['last_visit'][:10]})")
     return "\n".join(lines)
 
 
 def _query_session_heatmap(conn, limit, session_id):
     sid = session_id or _get_session_id()
     if not sid:
-        return "[error] Sin session_id. Usá --session-id o seteá OKF_SESSION_ID."
+        return "[error] No session_id. Use --session-id or set OKF_SESSION_ID."
     rows = conn.execute(
         """SELECT node, COUNT(*) as visits
            FROM v_node_events
@@ -90,10 +90,10 @@ def _query_session_heatmap(conn, limit, session_id):
         (sid, limit),
     ).fetchall()
     if not rows:
-        return f"(sin datos para sesión {sid})"
-    lines = [f"Nodos más activos en sesión {sid[:20]}...:"]
+        return f"(no data for session {sid})"
+    lines = [f"Most active nodes in session {sid[:20]}...:"]
     for r in rows:
-        lines.append(f"  {r['node']} — {r['visits']} visitas")
+        lines.append(f"  {r['node']} — {r['visits']} visits")
     return "\n".join(lines)
 
 
@@ -105,10 +105,10 @@ def _query_tool_usage(conn, limit):
            FROM events GROUP BY tool_norm ORDER BY cnt DESC"""
     ).fetchall()
     if not rows:
-        return "(sin datos)"
-    lines = ["Distribución de tools:"]
+        return "(no data)"
+    lines = ["Tool distribution:"]
     for r in rows:
-        lines.append(f"  {r['tool_norm']}: {r['cnt']} llamadas (promedio {r['avg_ms']:.0f}ms)")
+        lines.append(f"  {r['tool_norm']}: {r['cnt']} calls (avg {r['avg_ms']:.0f}ms)")
     return "\n".join(lines)
 
 
@@ -120,16 +120,16 @@ def _query_daily_activity(conn, limit):
         (limit,),
     ).fetchall()
     if not rows:
-        return "(sin datos)"
-    lines = ["Actividad por día:"]
+        return "(no data)"
+    lines = ["Activity per day:"]
     for r in rows:
-        lines.append(f"  {r['day']}: {r['events']} eventos, {r['sessions']} sesiones")
+        lines.append(f"  {r['day']}: {r['events']} events, {r['sessions']} sessions")
     return "\n".join(lines)
 
 
 def _query_node_timeline(conn, limit, arg):
     if not arg:
-        return "[error] Requiere --arg <slug> para node_timeline"
+        return "[error] Requires --arg <slug> for node_timeline"
     node = arg.split("/")[-1]
     rows = conn.execute(
         """SELECT ts, tool FROM v_node_events
@@ -138,8 +138,8 @@ def _query_node_timeline(conn, limit, arg):
         (node, limit),
     ).fetchall()
     if not rows:
-        return f"(sin datos para '{arg}')"
-    lines = [f"Historial de '{arg}':"]
+        return f"(no data for '{arg}')"
+    lines = [f"History of '{arg}':"]
     for r in rows:
         lines.append(f"  {r['ts'][:19]} — {r['tool']}")
     return "\n".join(lines)
@@ -151,16 +151,16 @@ def _query_error_summary(conn, limit):
         "GROUP BY tool ORDER BY cnt DESC"
     ).fetchall()
     if not rows:
-        return "Sin errores registrados."
-    lines = ["Tools con errores:"]
+        return "No errors recorded."
+    lines = ["Tools with errors:"]
     for r in rows:
-        lines.append(f"  {r['tool']}: {r['cnt']} errores")
+        lines.append(f"  {r['tool']}: {r['cnt']} errors")
     return "\n".join(lines)
 
 
 def _query_co_visited(conn, limit, arg):
     if not arg:
-        return "[error] Requiere --arg <slug> para co_visited"
+        return "[error] Requires --arg <slug> for co_visited"
     node = arg.split("/")[-1]
     rows = conn.execute(
         """SELECT e2.node as co_node,
@@ -173,10 +173,10 @@ def _query_co_visited(conn, limit, arg):
         (node, node, limit),
     ).fetchall()
     if not rows:
-        return f"Ningún nodo co-visitado con '{arg}' en la misma sesión."
-    lines = [f"Nodos visitados junto con '{arg}' en una misma sesión:"]
+        return f"No node co-visited with '{arg}' in the same session."
+    lines = [f"Nodes visited together with '{arg}' in the same session:"]
     for r in rows:
-        lines.append(f"  {r['co_node']} — {r['cnt']} sesiones compartidas")
+        lines.append(f"  {r['co_node']} — {r['cnt']} shared sessions")
     return "\n".join(lines)
 
 
@@ -192,8 +192,8 @@ def _query_read_ratio(conn, limit):
         (limit,),
     ).fetchall()
     if not rows:
-        return "(sin datos — se necesitan traverses y reads)"
-    lines = ["Nodos con menor ratio de lectura (vistos pero no leídos):"]
+        return "(no data — traverses and reads required)"
+    lines = ["Nodes with lowest read ratio (seen but not read):"]
     for r in rows:
         ratio = (r['reads'] / r['visits'] * 100) if r['visits'] else 0
         lines.append(f"  {r['node']} — {r['reads']} reads / {r['visits']} traverses = {ratio:.0f}%")
@@ -202,7 +202,7 @@ def _query_read_ratio(conn, limit):
 
 def _query_session_diff(conn, limit, arg):
     if not arg or "," not in arg:
-        return "[error] Requiere --arg 'sessionA,sessionB' para session_diff"
+        return "[error] Requires --arg 'sessionA,sessionB' for session_diff"
     parts = arg.split(",", 1)
     sid_a, sid_b = parts[0].strip(), parts[1].strip()
     rows = conn.execute(
@@ -215,8 +215,8 @@ def _query_session_diff(conn, limit, arg):
         (sid_a, sid_b, limit),
     ).fetchall()
     if not rows:
-        return "La sesión A no tiene nodos exclusivos (o todos están también en B)."
-    lines = [f"Nodos en sesión A ({sid_a[:20]}...) que NO están en B ({sid_b[:20]}...):"]
+        return "Session A has no exclusive nodes (or all are also in B)."
+    lines = [f"Nodes in session A ({sid_a[:20]}...) NOT in B ({sid_b[:20]}...):"]
     for r in rows:
         lines.append(f"  {r['node']}")
     return "\n".join(lines)
@@ -234,13 +234,13 @@ def _query_depth_stats(conn, limit):
         "FROM v_node_events WHERE tool_norm = 'traverse' AND depth IS NOT NULL"
     ).fetchone()
     if not rows:
-        return "(sin datos de profundidad)"
-    lines = ["Distribución de profundidad de traverse:"]
+        return "(no depth data)"
+    lines = ["Traverse depth distribution:"]
     for r in rows:
         bar = "█" * min(r['cnt'], 50)  # cap bar width
         lines.append(f"  depth={r['depth']}: {r['cnt']} traverses {bar}")
     if avg_row and avg_row['avg_depth']:
-        lines.append(f"  Profundidad promedio: {avg_row['avg_depth']:.1f}")
+        lines.append(f"  Average depth: {avg_row['avg_depth']:.1f}")
     return "\n".join(lines)
 
 
@@ -252,8 +252,8 @@ def _query_entry_points(conn, limit):
         (limit,),
     ).fetchall()
     if not rows:
-        return "(sin datos)"
-    lines = [f"Top {len(rows)} puntos de entrada de traverse:"]
+        return "(no data)"
+    lines = [f"Top {len(rows)} traverse entry points:"]
     for r in rows:
         lines.append(f"  {r['entry']} — {r['cnt']} traverses")
     return "\n".join(lines)
@@ -289,22 +289,22 @@ def _query_prompts(conn, limit, arg):
         (threshold, limit),
     ).fetchall()
     if not rows:
-        return "(sin datos)"
-    lines = [f"Prompts detectados (gap > {threshold}s entre eventos):"]
+        return "(no data)"
+    lines = [f"Prompts detected (gap > {threshold}s between events):"]
     for r in rows:
         tools = f"{r['first_tool']} → {r['last_tool']}"
         start = r['start_ts'][:19] if r['start_ts'] else "?"
-        lines.append(f"  prompt #{r['prompt_id']}: {start} — {r['events']} eventos ({tools})")
-    lines.append(f"Usá --arg=N para cambiar el umbral (default {threshold}s).")
+        lines.append(f"  prompt #{r['prompt_id']}: {start} — {r['events']} events ({tools})")
+    lines.append(f"Use --arg=N to change the threshold (default {threshold}s).")
     return "\n".join(lines)
 
 
 def _query_edge_type_usage(conn, limit):
-    """Uso de capacidades ontológicas: % de traverses con edge_type.
+    """Ontological capability usage: % of traverses with edge_type.
 
-    Mide el criterio de éxito de la Decision "Razonamiento ontológico obligatorio"
-    (2026-07-29): ≥50% de traverses con ambigüedad ontológica deben incluir
-    edge_type. Proxy automático: traverses cuyo params contiene edge_type no vacío.
+    Measures the success criterion of Decision "Mandatory ontological reasoning"
+    (2026-07-29): ≥50% of traverses with ontological ambiguity must include
+    edge_type. Automatic proxy: traverses whose params contain non-empty edge_type.
     """
     total = conn.execute(
         "SELECT COUNT(*) FROM events WHERE tool IN ('okf_traverse', 'traverse')"
@@ -315,11 +315,11 @@ def _query_edge_type_usage(conn, limit):
              AND COALESCE(json_extract(params, '$.edge_type'), '') != ''"""
     ).fetchone()[0]
     if not total:
-        return "(sin datos — no se han registrado traverses aún)"
+        return "(no data — no traverses recorded yet)"
     pct = typed / total * 100
     lines = [
-        f"Uso ontológico de traverse: {typed}/{total} con edge_type ({pct:.0f}%)",
-        f"  Criterio decisión (>=50%): {'CUMPLE' if pct >= 50 else 'NO CUMPLE'}",
+        f"Ontological traverse usage: {typed}/{total} with edge_type ({pct:.0f}%)",
+        f"  Decision criterion (>=50%): {'MET' if pct >= 50 else 'NOT MET'}",
     ]
     rows = conn.execute(
         """SELECT date(ts) as day, COUNT(*) as total,
@@ -330,7 +330,7 @@ def _query_edge_type_usage(conn, limit):
         (limit,),
     ).fetchall()
     if rows:
-        lines.append("Por día:")
+        lines.append("Per day:")
         for r in rows:
             p = (r['typed'] / r['total'] * 100) if r['total'] else 0
             lines.append(f"  {r['day']}: {r['typed']}/{r['total']} ({p:.0f}%)")
@@ -342,14 +342,14 @@ def _query_edge_type_usage(conn, limit):
            GROUP BY et ORDER BY cnt DESC"""
     ).fetchall()
     if ets:
-        lines.append("Tipos usados:")
+        lines.append("Types used:")
         for r in ets:
             lines.append(f"  {r['et']}: {r['cnt']}")
 
-    # ── Efectividad del anotado (result_edges en telemetry, 2026-08-01+) ──
-    # Promedio por travesía: cada traverse pesa igual (un vecindario denso no
-    # enmascara fallos de otros). Separa disciplina del agente (¿anota?) de
-    # calidad del grafo (¿el tipo es correcto?).
+    # ── Annotation effectiveness (result_edges in telemetry, 2026-08-01+) ──
+    # Average per traversal: each traverse weighs equally (a dense neighborhood
+    # cannot mask failures of others). Separates agent discipline (does it
+    # annotate?) from graph quality (is the type correct?).
     eff = conn.execute(
         f"""SELECT declared,
                    AVG(1.0 * matched / NULLIF(total, 0)) * 100 AS eff_pct,
@@ -377,14 +377,14 @@ def _query_edge_type_usage(conn, limit):
         t_match = sum(r['matched'] or 0 for r in eff)
         t_pct = sum((r['eff_pct'] or 0) * r['traverses'] for r in eff) / t_trav if t_trav else 0
         lines.append(
-            f"Efectividad del anotado ({t_pct:.0f}% promedio de {t_trav} travesías, "
-            f"{t_match}/{t_edges} aristas):"
+            f"Annotation effectiveness ({t_pct:.0f}% avg over {t_trav} traverses, "
+            f"{t_match}/{t_edges} edges):"
         )
         for r in eff:
             p = r['eff_pct'] or 0
-            flag = "OK" if p >= 70 else "BAJA"
+            flag = "OK" if p >= 70 else "LOW"
             lines.append(f"  {r['declared']}: {p:.0f}% ({r['traverses']} trav, "
-                         f"{r['matched']}/{r['total']} aristas) {flag}")
+                         f"{r['matched']}/{r['total']} edges) {flag}")
         zones = conn.execute(
             f"""SELECT zone,
                        AVG(1.0 * matched / NULLIF(total, 0)) * 100 AS eff_pct,
@@ -411,11 +411,11 @@ def _query_edge_type_usage(conn, limit):
             (limit,),
         ).fetchall()
         if zones:
-            lines.append("Por zona (directorio origen, >=3 travesías):")
+            lines.append("By zone (source directory, >=3 traverses):")
             for r in zones:
                 lines.append(f"  {r['zone']}: {r['eff_pct'] or 0:.0f}% ({r['traverses']} trav)")
     else:
-        lines.append("(sin datos de efectividad — requiere result_edges en telemetry, 2026-08-01+)")
+        lines.append("(no effectiveness data — requires result_edges in telemetry, 2026-08-01+)")
     return "\n".join(lines)
 
 
@@ -442,23 +442,23 @@ VALID_QUERIES = ", ".join(sorted(QUERIES.keys()))
 
 
 def run(args, vault, config=None):
-    """Ejecuta una consulta analítica sobre los eventos de Cognitive Trace.
+    """Runs an analytical query over Cognitive Trace events.
 
     Args:
-        args: argparse.Namespace con query, limit, arg, session_id
-        vault: Path al vault
-        config: Config cargada (opcional)
+        args: argparse.Namespace with query, limit, arg, session_id
+        vault: Path to the vault
+        config: Loaded config (optional)
     """
     db_path = _resolve_db_path(config)
 
     if not db_path.exists():
-        print(f"[error] Base de datos no encontrada: {db_path}", file=sys.stderr)
-        print("Asegurate de que Cognitive Trace esté activo y haya registrado eventos.", file=sys.stderr)
+        print(f"[error] Database not found: {db_path}", file=sys.stderr)
+        print("Make sure Cognitive Trace is active and has recorded events.", file=sys.stderr)
         return 1
 
     query = args.query
     if query not in QUERIES:
-        print(f"[error] Query desconocida: '{query}'. Válidas: {VALID_QUERIES}", file=sys.stderr)
+        print(f"[error] Unknown query: '{query}'. Valid: {VALID_QUERIES}", file=sys.stderr)
         return 1
 
     limit = args.limit

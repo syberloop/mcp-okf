@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""MCP server que wrappea python3 -m cli del vault OKF.
+"""MCP server that wraps python3 -m cli for the OKF vault.
 
-Expone traverse, search, read, graph, health, index, touch, new, review como tools MCP
-para que el agente Hermes los tenga como funciones nativas con cero fricción,
-eliminando el sesgo de toolset que desvía al agente hacia mcp__gbrain__get_page.
+Exposes traverse, search, read, graph, health, index, touch, new, review as MCP tools
+so the Hermes agent has them as native zero-friction functions,
+eliminating the toolset bias that diverts the agent toward mcp__gbrain__get_page.
 
-Usa FastMCP (mcp.server.fastmcp) — protocolo JSON-RPC stdio.
+Uses FastMCP (mcp.server.fastmcp) — JSON-RPC stdio protocol.
 
-Persiste cada tool call a SQLite (analítica) y JSONL (plugin Cognitive Trace en Obsidian).
+Persists every tool call to SQLite (analytics) and JSONL (Cognitive Trace plugin in Obsidian).
 """
 
 import json
@@ -27,7 +27,7 @@ VAULT = Path.home() / "OKF-Vault"
 MCP_DIR = Path(__file__).parent
 CLI = ["python3", "-m", "cli", "--vault", str(VAULT)]
 
-# Configuración externalizada (se carga al iniciar)
+# Externalized configuration (loaded on startup)
 from cli.config import Config
 _config = Config(VAULT)
 # Inyectar exclusiones en vault.py
@@ -56,7 +56,7 @@ else:
     JSONL_PATH = None
 JSONL_LOCK = threading.Lock()
 
-# Máximo de result_nodes por evento (bound del tamaño de línea JSONL)
+# Max result_nodes per event (bound on JSONL line size)
 RESULT_NODES_CAP = 150
 
 mcp = FastMCP("cli")
@@ -65,11 +65,11 @@ mcp = FastMCP("cli")
 # ── Persistencia Cognitive Trace ────────────────────────────────────────────
 
 def _get_session_id() -> str:
-    """Devuelve el session_id de Hermes o genera uno local."""
+    """Returns the Hermes session_id or generates a local one."""
     sid = os.environ.get("HERMES_SESSION_ID", "")
     if sid:
         return sid
-    # Fallback: intentar leer del archivo de estado
+    # Fallback: try reading from state file
     state_file = Path.home() / ".hermes" / "session_state.json"
     if state_file.exists():
         try:
@@ -81,7 +81,7 @@ def _get_session_id() -> str:
 
 
 def _init_db() -> None:
-    """Crea tablas e índices si no existen."""
+    """Creates tables and indexes if they don't exist."""
     if DB_PATH is None or JSONL_DIR is None:
         return  # Cognitive Trace desactivado
     JSONL_DIR.mkdir(parents=True, exist_ok=True)
@@ -177,7 +177,7 @@ def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedPr
 
 
 def _append_jsonl(event: dict) -> None:
-    """Escribe una línea JSON al event_log.jsonl."""
+    """Writes a JSON line to event_log.jsonl."""
     if JSONL_PATH is None:
         return  # Cognitive Trace desactivado
     try:
@@ -191,13 +191,13 @@ def _append_jsonl(event: dict) -> None:
 
 
 def _extract_created_path(result: "subprocess.CompletedProcess") -> str | None:
-    """Extrae el path relativo del archivo creado por new."""
+    """Extracts the relative path of the file created by new."""
     if result.returncode != 0:
         return None
     for line in (result.stdout or "").splitlines():
-        if "Creado:" not in line:
+        if "Created:" not in line:
             continue
-        raw_path = line.split("Creado:", 1)[1].strip()
+        raw_path = line.split("Created:", 1)[1].strip()
         try:
             relative = Path(raw_path).resolve().relative_to(VAULT.resolve())
             return str(relative)
@@ -208,11 +208,11 @@ def _extract_created_path(result: "subprocess.CompletedProcess") -> str | None:
 
 def _extract_result_nodes(tool_name: str, args: list[str],
                           result: "subprocess.CompletedProcess") -> list[str] | None:
-    """Extrae los paths de nodos del resultado (traverse/search) para el trace visual.
+    """Extracts result nodes from command output (traverse/search) for visual trace.
 
-    traverse en modo texto no imprime los paths de cada nodo → re-run con --json
-    (por eso el caller manda este caso a un thread, para no sumar latencia al tool
-    call). search en texto sí imprime paths (columna ARCHIVO) → parse gratis.
+    traverse in text mode does not print each node's path → re-run with --json
+    (so the caller sends this case to a thread, to not add latency to the tool
+    call). search in text mode does print paths (ARCHIVO column) → free parse.
     """
     if result.returncode != 0:
         return None
@@ -254,7 +254,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
                     if m:
                         nodes.append(m.group(2))
         elif tool_name == "okf_analytics":
-            # most_visited, least_visited, session_heatmap devuelven líneas
+            # most_visited, least_visited, session_heatmap return lines
             # "  slug — N visitas (...)". Extraer slugs.
             nodes = []
             for line in result.stdout.splitlines():
@@ -270,7 +270,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
 
 
 def _extract_result_edges(tool_name, args, result):
-    """Extrae result_edges del output JSON de traverse para Cognitive Trace."""
+    """Extracts result_edges from traverse JSON output for Cognitive Trace."""
     if tool_name != "okf_traverse":
         return None
     if result.returncode != 0:
@@ -291,15 +291,15 @@ def _extract_result_edges(tool_name, args, result):
 
 
 def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
-    """Extrae paths de nodos del output textual de okf_graph.
+    """Extracts node paths from okf_graph text output.
 
-    okf_graph no tiene flag --json. Los comandos que devuelven listas
-    concretas de archivos (hubs, backlinks, deps, orphans, cluster, dump)
-    usan formatos con paths terminados en .md. Comandos de agregación
-    (stats, tags, bridges) no producen listas de nodos → se ignoran.
+    okf_graph has no --json flag. Commands that return concrete lists
+    of files (hubs, backlinks, deps, orphans, cluster, dump)
+    use formats with .md paths. Aggregation commands
+    (stats, tags, bridges) produce no node lists → ignored.
     """
     cmd = args[1] if len(args) > 1 else (args[0] if args else "")
-    # Comandos que no devuelven archivos individuales
+    # Commands that don't return individual files
     if cmd in ("stats", "tags", "bridges", "dirs", "types"):
         return []
     paths: list[str] = []
@@ -313,7 +313,7 @@ def _parse_graph_output(stdout: str, args: list[str]) -> list[str]:
 
 def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedProcess",
                   duration_ms: int, args: list[str]) -> None:
-    """Extrae result_nodes y persiste el evento a SQLite + JSONL."""
+    """Extracts result_nodes and persists the event to SQLite + JSONL."""
     if tool_name == "okf_new":
         created_path = _extract_created_path(result)
         if created_path:
@@ -342,9 +342,9 @@ def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedPro
 
 def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None,
          timeout: int = 30) -> str:
-    """Ejecuta python3 -m cli <args> desde el vault y devuelve stdout.
+    """Runs python3 -m cli <args> from the vault and returns stdout.
 
-    Persiste el evento a SQLite + JSONL como efecto secundario.
+    Persists event to SQLite + JSONL as a side effect.
     """
     try:
         start = time.monotonic()
@@ -361,21 +361,21 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             output += "\n[stderr]\n" + result.stderr
         if result.returncode != 0:
             output += f"\n[exit_code: {result.returncode}]"
-        # Persistir de forma síncrona para conservar el orden de llegada en
-        # SQLite/JSONL. La extracción secundaria de traverse no debe reordenar
-        # eventos posteriores ni perderse al cerrar el proceso.
+        # Persist synchronously to preserve arrival order in
+        # SQLite/JSONL. Secondary traverse extraction must not reorder
+        # subsequent events nor be lost on process exit.
         _finish_event(tool_name, params or {}, result, duration_ms, list(args))
-        return output.strip() or "(sin salida)"
+        return output.strip() or "(no output)"
     except subprocess.TimeoutExpired as e:
         duration_ms = int((time.monotonic() - start) * 1000) if "start" in locals() else timeout * 1000
         result = subprocess.CompletedProcess(
             args=CLI + args,
             returncode=124,
             stdout=e.stdout or "",
-            stderr=f"Timeout después de {timeout}s",
+            stderr=f"Timeout after {timeout}s",
         )
         _finish_event(tool_name, params or {}, result, duration_ms, list(args))
-        return "[timeout] El comando excedió el tiempo límite."
+        return "[timeout] The command exceeded the time limit."
     except Exception as e:
         duration_ms = int((time.monotonic() - start) * 1000) if "start" in locals() else 0
         result = subprocess.CompletedProcess(
@@ -390,29 +390,29 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
 
 @mcp.tool()
 def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: bool = False, json_output: bool = False, seeds: str = "", edge_type: str = "", filter: bool = False) -> str:
-    """Travesía semántica del grafo OKF. Devuelve frontmatter del concepto + vecindario (wikilinks, backlinks, cyber.corrects).
+    """Semantic traversal of the OKF graph. Returns concept frontmatter + neighborhood (wikilinks, backlinks, cyber.corrects).
 
-    USO PRIMARIO para consultar el vault. Preferir sobre search.
+    PRIMARY USE for querying the vault. Prefer over search.
 
-    SEMÁNTICA ONTOLÓGICA (Decisión "Cada traverse es una búsqueda ontológica", 2026-08-01):
-    edge_type es OBLIGATORIO — declara la relación explorada (anotación). Por defecto NO
-    filtra: devuelve el vecindario completo etiquetado y ordena primero las aristas del
-    tipo declarado. Pasar filter=True solo para exclusión explícita (un solo tipo).
+    ONTOLOGICAL SEMANTICS (Decision "Every traverse is an ontological search", 2026-08-01):
+    edge_type is MANDATORY — declares the relationship explored (annotation). By default does NOT
+    filter: returns the full neighborhood labeled, and sorts edges of the declared
+    type first. Pass filter=True only for explicit exclusion (a single type).
 
     Args:
-        slug: Slug del concepto (ej: 'grafo-cibernetico-marco-teorico' o 'frameworks/tp3-cibernetico')
-        depth: Profundidad de travesía (default 2)
-        direction: 'both' (default), 'out' (solo salientes), 'in' (solo entrantes)
-        no_cyber: Si True, no sigue aristas cyber.corrects/corrected_by
-        json_output: Si True, salida JSON para consumo programático
-        seeds: Slugs separados por coma para múltiples orígenes (unión + deduplicación).
-               Ej: 'frameworks/tp3-cibernetico,decisions/description-cibernetico-okf'
-        edge_type: OBLIGATORIO — tipo ontológico explorado (extiende, refina, fundamenta,
-                   aplica, depende, corrige). Anota sin filtrar.
-        filter: Si True, edge_type excluye aristas que no son de ese tipo (exclusión explícita).
+        slug: Concept slug (e.g.: 'grafo-cibernetico-marco-teorico' or 'frameworks/tp3-cibernetico')
+        depth: Traversal depth (default 2)
+        direction: 'both' (default), 'out' (outgoing only), 'in' (incoming only)
+        no_cyber: If True, does not follow cyber.corrects/corrected_by edges
+        json_output: If True, JSON output for programmatic consumption
+        seeds: Comma-separated slugs for multiple origins (union + deduplication).
+               e.g.: 'frameworks/tp3-cibernetico,decisions/description-cibernetico-okf'
+        edge_type: MANDATORY — ontological type explored (extiende, refina, fundamenta,
+                   aplica, depende, corrige). Annotates without filtering.
+        filter: If True, edge_type excludes edges not of that type (explicit exclusion).
     """
     if not edge_type or not edge_type.strip():
-        return "[error] traverse requiere edge_type: todo traverse es una búsqueda ontológica — declare el tipo explorado (extiende|refina|fundamenta|aplica|depende|corrige). Ver Decision 2026-08-01."
+        return "[error] traverse requires edge_type: every traverse is an ontological search — declare the explored type (extiende|refina|fundamenta|aplica|depende|corrige). See Decision 2026-08-01."
     args = ["traverse"]
     params = {"depth": depth, "direction": direction, "no_cyber": no_cyber}
 
@@ -424,7 +424,7 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
         args += [slug]
         params["slug"] = slug
     else:
-        return "[error] Debe especificar 'slug' o 'seeds'"
+        return "[error] Must specify 'slug' or 'seeds'"
 
     args += ["--depth", str(depth)]
     if direction in ("out", "in"):
@@ -443,25 +443,25 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
 
 @mcp.tool()
 def search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "", with_graph: bool = False) -> str:
-    """Búsqueda FTS5 en el vault OKF. FALLBACK — preferir traverse o lectura de índices.
+    """FTS5 search in the OKF vault. FALLBACK — prefer traverse or index reads.
 
-    Usar solo cuando:
-    - La travesía no encuentra ruta en ≤6 hops
-    - Se necesita filtrar por campos específicos (type, status, cyber)
-    - Se buscan tareas pendientes (--todos)
-    - Se necesita filtrar por rango de fechas (--since, --until)
+    Use only when:
+    - Traversal doesn't find a path in ≤6 hops
+    - You need to filter by specific fields (type, status, cyber)
+    - You're looking for pending tasks (--todos)
+    - You need to filter by date range (--since, --until)
 
     Args:
-        query: Término de búsqueda (opcional si se usa --todos o --type)
-        type: Filtrar por type (Decision, Plan, Project, Insight, etc.)
-        status: Filtrar por status (propuesta, aplicada, etc.)
-        cyber_field: Campo del bloque cyber (outcome, sensor, target_metric.name)
-        cyber_value: Valor del campo cyber (pending, success, failure)
-        todos: Si True, busca tareas - [ ] pendientes
-        json_output: Si True, salida JSON
-        since: Filtrar por timestamp >= fecha (ISO 8601, inclusivo, ej: "2026-07-20")
-        until: Filtrar por timestamp <= fecha (ISO 8601, inclusivo)
-        with_graph: Si True, incluye sección ## Relaciones detectadas con aristas tipadas entre resultados
+        query: Search term (optional if using --todos or --type)
+        type: Filter by type (Decision, Plan, Project, Insight, etc.)
+        status: Filter by status (propuesta, aplicada, etc.)
+        cyber_field: cyber block field (outcome, sensor, target_metric.name)
+        cyber_value: cyber field value (pending, success, failure)
+        todos: If True, searches for pending - [ ] tasks
+        json_output: If True, JSON output
+        since: Filter by timestamp >= date (ISO 8601, inclusive, e.g. "2026-07-20")
+        until: Filter by timestamp <= date (ISO 8601, inclusive)
+        with_graph: If True, includes ## Detected relationships section with typed edges between results
     """
     args = ["search"]
     if query:
@@ -494,16 +494,16 @@ def search(query: str = "", type: str = "", status: str = "", cyber_field: str =
 
 @mcp.tool()
 def read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = False) -> str:
-    """Lee un concepto del vault OKF e incrementa su contador de reads.
+    """Reads a concept from the OKF vault and increments its read counter.
 
-    Usar para leer el body completo de un concepto después de que traverse
-    confirme su relevancia. NUNCA usar read_file del sistema sobre archivos .md del vault.
+    Use to read the full body of a concept after traverse
+    confirms its relevance. NEVER use system read_file on vault .md files.
 
     Args:
-        slug: Slug del concepto (ej: 'decisions/mcp-okf-cli-como-correccion-de-sesgo-de-toolset')
-        offset: Línea inicial (1-indexed, default 1)
-        limit: Máximo de líneas (default 500)
-        no_touch: Si True, no incrementa el contador de reads
+        slug: Concept slug (e.g.: 'decisions/mcp-okf-cli-como-correccion-de-sesgo-de-toolset')
+        offset: Starting line (1-indexed, default 1)
+        limit: Max lines (default 500)
+        no_touch: If True, does not increment the read counter
     """
     args = ["read", slug, "--offset", str(offset), "--limit", str(limit)]
     if no_touch:
@@ -515,26 +515,26 @@ def read(slug: str, offset: int = 1, limit: int = 500, no_touch: bool = False) -
 
 @mcp.tool()
 def graph(command: str, arg: str = "", edge_type: str = "") -> str:
-    """Analiza el grafo de wikilinks, aristas tipadas y tags del vault OKF.
+    """Analyzes the wikilink graph, typed edges, and tags of the OKF vault.
 
-    Útil para preguntas sobre relaciones, dependencias, estructura o agrupación temática.
+    Useful for questions about relationships, dependencies, structure, or thematic grouping.
 
     Args:
-        command: Comando del grafo. Uno de:
-            - 'stats': estado general (total nodos, huérfanos, tags, aristas tipadas)
-            - 'orphans': conceptos sin wikilinks
-            - 'hubs': conceptos más referenciados
-            - 'backlinks': conceptos que referencian a ARG (requiere arg)
-            - 'deps': conceptos referenciados por ARG (requiere arg)
-            - 'tags': todos los tags o filtrar por ARG
-            - 'bridges': tags que conectan clusters de wikilinks
-            - 'cluster': agrupación del vault
-            - 'dump': volcado completo del grafo
-            - 'dirs': árbol de directorios con conteo de conceptos
-            - 'types': distribución de conceptos por type (frontmatter)
-            - 'suggest-edge-types': sugiere tipos de arista para wikilinks existentes
-        arg: Argumento adicional (slug de concepto para backlinks/deps, nombre de tag para tags)
-        edge_type: Filtrar backlinks/deps por tipo de arista (extiende, refina, etc.)
+        command: Graph command. One of:
+            - 'stats': overall status (total nodes, orphans, tags, typed edges)
+            - 'orphans': concepts without wikilinks
+            - 'hubs': most referenced concepts
+            - 'backlinks': concepts that reference ARG (requires arg)
+            - 'deps': concepts referenced by ARG (requires arg)
+            - 'tags': all tags or filter by ARG
+            - 'bridges': tags that connect wikilink clusters
+            - 'cluster': vault clustering
+            - 'dump': full graph dump
+            - 'dirs': directory tree with concept counts
+            - 'types': concept distribution by type (frontmatter)
+            - 'suggest-edge-types': suggests edge types for existing wikilinks
+        arg: Additional argument (concept slug for backlinks/deps, tag name for tags)
+        edge_type: Filter backlinks/deps by edge type (extiende, refina, etc.)
     """
     args = ["graph", command]
     if arg:
@@ -549,17 +549,17 @@ def graph(command: str, arg: str = "", edge_type: str = "") -> str:
 
 @mcp.tool()
 def graph_suggest_edge_types(apply: bool = False, min_score: float = 0.0) -> str:
-    """Sugiere tipos de arista para wikilinks existentes sin tipo.
+    """Suggests edge types for existing untyped wikilinks.
 
-    Analiza todas las aristas del grafo y propone tipos semanticos
-    (extiende, refina, fundamenta, aplica, depende, corrige) basandose
-    en los tipos de nodo origen y destino, con scoring semantico 0.0-1.0
+    Analyzes all graph edges and proposes semantic types
+    (extiende, refina, fundamenta, aplica, depende, corrige) based
+    on source and target node types, with semantic scoring 0.0-1.0
     (structural fit, tag overlap, description similarity, graph precedent).
 
     Args:
-        apply: Si True, escribe las sugerencias de confianza ALTA en el frontmatter.
-        min_score: Score semantico minimo (0.0-1.0) para aplicar. Con apply=True,
-                   descarta sugerencias con score < min_score. Default 0.0 = sin filtro.
+        apply: If True, writes HIGH confidence suggestions to the frontmatter.
+        min_score: Minimum semantic score (0.0-1.0) to apply. With apply=True,
+                   discards suggestions with score < min_score. Default 0.0 = no filter.
     """
     args = ["graph", "suggest-edge-types"]
     params = {"command": "suggest-edge-types", "apply": apply, "min_score": min_score}
@@ -572,14 +572,14 @@ def graph_suggest_edge_types(apply: bool = False, min_score: float = 0.0) -> str
 
 @mcp.tool()
 def graph_impact(slug: str) -> str:
-    """Análisis de impacto ontológico: qué nodos revisar si este cambia.
+    """Ontological impact analysis: which nodes to review if this one changes.
 
-    Sigue las aristas tipadas en dirección del impacto para determinar
-    qué conceptos dependen ontológicamente de este nodo y deberían
-    revisarse si se modifica.
+    Follows typed edges in the direction of impact to determine
+    which concepts ontologically depend on this node and should
+    be reviewed if it is modified.
 
     Args:
-        slug: Slug del concepto modificado (ej: 'frameworks/tp3-cibernetico')
+        slug: Slug of the modified concept (e.g.: 'frameworks/tp3-cibernetico')
     """
     return _run(["graph", "impact", slug], tool_name="okf_graph",
                 params={"command": "impact", "arg": slug})
@@ -587,14 +587,14 @@ def graph_impact(slug: str) -> str:
 
 @mcp.tool()
 def health(strict: bool = False, json_output: bool = False) -> str:
-    """Chequeo completo de salud del vault OKF (8 verificaciones).
+    """Complete health check of the OKF vault (8 checks).
 
-    Verifica: frontmatter, índices, grafo (huérfanos, densidad), links rotos,
-    scripts (smoke test), git hook, bloque cyber, sincronización plugin↔spec.
+    Verifies: frontmatter, indexes, graph (orphans, density), broken links,
+    scripts (smoke test), git hook, cyber block, plugin↔spec sync.
 
     Args:
-        strict: Si True, exit code 1 si hay warnings
-        json_output: Si True, salida JSON
+        strict: If True, exit code 1 if there are warnings
+        json_output: If True, JSON output
     """
     args = ["health"]
     if strict:
@@ -606,20 +606,20 @@ def health(strict: bool = False, json_output: bool = False) -> str:
 
 @mcp.tool()
 def index() -> str:
-    """Regenera todos los index.md y log.md del vault OKF.
+    """Regenerates all index.md and log.md in the OKF vault.
 
-    Normalmente ejecutado por el pre-commit hook. Usar manualmente solo si
-    los índices están desactualizados y no se va a commitear inmediatamente.
+    Normally run by the pre-commit hook. Use manually only if
+    indexes are out of date and you won't commit immediately.
     """
     return _run(["index"], tool_name="okf_index", params={})
 
 
 @mcp.tool()
 def touch(all: bool = True) -> str:
-    """Estadísticas de lecturas (reads) del vault OKF.
+    """Read statistics of the OKF vault.
 
     Args:
-        all: Si True (default), muestra tabla con contadores + barras de frecuencia
+        all: If True (default), shows table with counters + frequency bars
     """
     args = ["touch"]
     if all:
@@ -629,14 +629,14 @@ def touch(all: bool = True) -> str:
 
 @mcp.tool()
 def session_metrics(json_output: bool = False) -> str:
-    """Métricas agregadas de todas las sesiones del vault.
+    """Aggregated metrics of all vault sessions.
 
-    Extrae métricas de la sección ## Métricas de cada resumen de sesión:
-    tools usadas, conceptos creados, commits, infracciones MCP.
-    Agrega totales y tendencias.
+    Extracts metrics from the ## Metrics section of each session summary:
+    tools used, concepts created, commits, MCP violations.
+    Aggregates totals and trends.
 
     Args:
-        json_output: Si True, salida JSON para consumo programático
+        json_output: If True, JSON output for programmatic consumption
     """
     args = ["session-metrics"]
     if json_output:
@@ -646,17 +646,17 @@ def session_metrics(json_output: bool = False) -> str:
 
 @mcp.tool()
 def stale(json_output: bool = False) -> str:
-    """Detector de obsolescencia semántica del vault OKF.
+    """Semantic staleness detector of the OKF vault.
 
-    Evalúa 7 señales (timestamp, reads, propuesta fantasma, huérfanos,
-    commits, decisión sin status, descripción vs body) y clasifica cada
-    concepto como STALE (3+ señales), ATENCIÓN (1-2) o FRESCO (0).
+    Evaluates 7 signals (timestamp, reads, phantom proposal, orphans,
+    commits, decision without status, description vs body) and classifies each
+    concept as STALE (3+ signals), ATTENTION (1-2) or FRESH (0).
 
-    Solo-lectura. No modifica el vault. Usar para auditoría semanal
-    de conceptos que requieren atención humana.
+    Read-only. Does not modify the vault. Use for weekly audit
+    of concepts requiring human attention.
 
     Args:
-        json_output: Si True, salida JSON para consumo programático
+        json_output: If True, JSON output for programmatic consumption
     """
     args = ["stale"]
     if json_output:
@@ -666,21 +666,21 @@ def stale(json_output: bool = False) -> str:
 
 @mcp.tool()
 def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "", links: str = "") -> str:
-    """Crea un concepto nuevo en el vault OKF con frontmatter consistente.
+    """Creates a new concept in the OKF vault with consistent frontmatter.
 
-    Usar SIEMPRE en vez de write_file para crear conceptos.
+    ALWAYS use this instead of write_file to create concepts.
 
     Args:
-        type: Tipo de concepto (Decision, Plan, Project, Insight, MarcoTeorico, etc.)
-        title: Título descriptivo
-        description: Resumen de una línea (obligatorio para navegabilidad)
-        tags: Tags separados por coma (opcional)
-        status: Estado inicial (propuesta, aplicada, etc.)
-        cyber: Si True y el type califica, agrega bloque cyber con placeholders
-        dry_run: Si True, previsualiza sin escribir
-        body: Contenido completo del body (opcional — si se omite, usa template por defecto)
-        links: Links tipados separados por coma, formato target:type
-               (ej: 'frameworks/tp3:extiende,decisions/criterio:refina')
+        type: Concept type (Decision, Plan, Project, Insight, MarcoTeorico, etc.)
+        title: Descriptive title
+        description: One-line summary (required for navigability)
+        tags: Comma-separated tags (optional)
+        status: Initial status (propuesta, aplicada, etc.)
+        cyber: If True and the type qualifies, adds cyber block with placeholders
+        dry_run: If True, previews without writing
+        body: Full body content (optional — if omitted, uses default template)
+        links: Comma-separated typed links, format target:type
+               (e.g.: 'frameworks/tp3:extiende,decisions/criterio:refina')
     """
     args = ["new", "--type", type, "--title", title, "--description", description]
     if tags:
@@ -706,36 +706,36 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
     })
 
 
-# ── Cognitive Trace: Analítica + Comandos ──────────────────────────────────
+# ── Cognitive Trace: Analytics + Commands ───────────────────────────────────
 
 @mcp.tool()
 def analytics(query: str = "most_visited", limit: int = 10,
                   arg: str = "", session_id: str = "") -> str:
-    """Consulta analítica sobre eventos de trace del vault OKF.
+    """Analytical query over trace events of the OKF vault.
 
     Args:
-        query: Tipo de consulta:
-            - 'most_visited': nodos más visitados (top N por visitas en traverse)
-            - 'least_visited': nodos con menos visitas
-            - 'session_heatmap': nodos más activos en la sesión actual
-            - 'tool_usage': distribución de tools usadas
-            - 'daily_activity': actividad por día (eventos y sesiones)
-            - 'node_timeline': historial de visitas para un nodo (requiere slug en arg)
-            - 'error_summary': tools con errores
-            - 'co_visited': nodos visitados junto con arg en una misma sesión (requiere slug en arg)
-            - 'read_ratio': proporción de lecturas vs traverses por nodo (qué tanto se profundiza)
-            - 'session_diff': nodos visitados en la sesión A que no están en B (arg="A,B")
-            - 'depth_stats': distribución de profundidad de traverse
-            - 'entry_points': nodos más usados como entrada de traverse
-            - 'prompts': auto-segmentación de la sesión en prompts por gaps >60s entre eventos
-            - 'edge_type_usage': uso ontológico del grafo — traverses con edge_type vs sin (mide criterio ≥50% de la Decision razonamiento-ontologico-obligatorio)
-        limit: Límite de resultados (default 10)
-        arg: Argumento adicional (slug para node_timeline/co_visited, "sessionA,sessionB" para session_diff)
-        session_id: Filtrar por sesión (vacío = todas)
+        query: Query type:
+            - 'most_visited': most visited nodes (top N by traverse visits)
+            - 'least_visited': least visited nodes
+            - 'session_heatmap': most active nodes in the current session
+            - 'tool_usage': distribution of tools used
+            - 'daily_activity': daily activity (events and sessions)
+            - 'node_timeline': visit history for a node (requires slug in arg)
+            - 'error_summary': tools with errors
+            - 'co_visited': nodes visited together with arg in the same session (requires slug in arg)
+            - 'read_ratio': read vs traverse ratio per node (how deeply nodes are explored)
+            - 'session_diff': nodes visited in session A not in B (arg="A,B")
+            - 'depth_stats': traverse depth distribution
+            - 'entry_points': most used traverse entry nodes
+            - 'prompts': auto-segmentation of session into prompts by >60s gaps between events
+            - 'edge_type_usage': ontological graph usage — traverses with edge_type vs without (measures ≥50% criteria from Decision razonamiento-ontologico-obligatorio)
+        limit: Result limit (default 10)
+        arg: Additional argument (slug for node_timeline/co_visited, "sessionA,sessionB" for session_diff)
+        session_id: Filter by session (empty = all)
 
-    Delegado al CLI (analytics.py) — única fuente de verdad. La duplicación
-    inline previa causó divergencia (NameError tool_name, tool names y slugs
-    sin normalizar). Ver decision en el vault.
+    Delegated to CLI (analytics.py) — single source of truth. Previous inline
+    duplication caused divergence (NameError tool_name, tool names and slugs
+    without normalization). See decision in the vault.
     """
     return _run(
         ["analytics", "--query", query, "--limit", str(limit),
@@ -748,23 +748,23 @@ def analytics(query: str = "most_visited", limit: int = 10,
 @mcp.tool()
 def graph_command(action: str, nodes: str = "", tag: str = "",
                       color: str = "#FF6B35", session_id: str = "") -> str:
-    """Envía un comando al plugin Cognitive Trace en Obsidian vía JSONL.
+    """Sends a command to the Cognitive Trace plugin in Obsidian via JSONL.
 
     Args:
-        action: Acción a ejecutar:
-            - 'highlight_nodes': resaltar nodos específicos (requiere nodes)
-            - 'highlight_most_visited': resaltar top N más visitados (usa analytics internamente)
-            - 'highlight_least_visited': resaltar N menos visitados
-            - 'focus_cluster': enfocar nodos de un tag (requiere tag)
-            - 'highlight_session': resaltar nodos de una sesión (requiere session_id)
-            - 'highlight_path': resaltar ruta entre nodos (nodes: "A,B,C")
-            - 'clear_highlights': limpiar todos los resaltados
-            - 'reset_graph': volver al estado base
-        nodes: Lista de slugs separados por coma (para highlight_nodes, highlight_path).
-               Para highlight_most_visited / highlight_least_visited: número de nodos a resaltar (default 10).
-        tag: Tag para focus_cluster
-        color: Color en hex (#RRGGBB, default #FF6B35 naranja)
-        session_id: ID de sesión (para highlight_session)
+        action: Action to execute:
+            - 'highlight_nodes': highlight specific nodes (requires nodes)
+            - 'highlight_most_visited': highlight top N most visited (uses analytics internally)
+            - 'highlight_least_visited': highlight N least visited
+            - 'focus_cluster': focus nodes of a tag (requires tag)
+            - 'highlight_session': highlight nodes of a session (requires session_id)
+            - 'highlight_path': highlight path between nodes (nodes: "A,B,C")
+            - 'clear_highlights': clear all highlights
+            - 'reset_graph': return to base state
+        nodes: Comma-separated slug list (for highlight_nodes, highlight_path).
+               For highlight_most_visited / highlight_least_visited: number of nodes to highlight (default 10).
+        tag: Tag for focus_cluster
+        color: Color in hex (#RRGGBB, default #FF6B35 orange)
+        session_id: Session ID (for highlight_session)
     """
     valid = {
         "highlight_nodes", "highlight_most_visited", "highlight_least_visited",
@@ -772,7 +772,7 @@ def graph_command(action: str, nodes: str = "", tag: str = "",
         "clear_highlights", "reset_graph",
     }
     if action not in valid:
-        return f"[error] Acción desconocida: '{action}'. Válidas: {', '.join(sorted(valid))}"
+        return f"[error] Unknown action: '{action}'. Valid: {', '.join(sorted(valid))}"
 
     command = {
         "type": "command",
@@ -805,11 +805,11 @@ def graph_command(action: str, nodes: str = "", tag: str = "",
             if resolved:
                 command["nodes"] = resolved
             else:
-                return "(sin datos — no se han registrado traverses aún)"
+                return "(no data — no traverses recorded yet)"
         except Exception as e:
-            return f"[error] No se pudieron resolver los nodos: {e}"
+            return f"[error] Could not resolve nodes: {e}"
 
-    # highlight_session: auto-resolver los nodos de la sesión desde SQLite
+    # highlight_session: auto-resolve session nodes from SQLite
     if action == "highlight_session":
         sid = session_id or _get_session_id()
         try:
@@ -824,31 +824,31 @@ def graph_command(action: str, nodes: str = "", tag: str = "",
             if resolved:
                 command["nodes"] = resolved
             else:
-                return f"Sin nodos encontrados para la sesión {sid[:20]}..."
+                return f"No nodes found for session {sid[:20]}..."
         except Exception as e:
-            return f"[error] No se pudieron resolver los nodos de la sesión: {e}"
+            return f"[error] Could not resolve session nodes: {e}"
 
     _append_jsonl(command)
-    info = f"Comando '{action}'"
+    info = f"Command '{action}'"
     if command.get("nodes"):
-        info += f" ({len(command['nodes'])} nodos)"
-    info += " enviado al grafo."
+        info += f" ({len(command['nodes'])} nodes)"
+    info += " sent to graph."
     return info
 
 
 @mcp.tool()
 def file_info(slug: str, json_output: bool = False) -> str:
-    """Metadatos de fecha de un concepto del vault OKF.
+    """Date metadata for a concept in the OKF vault.
 
-    Devuelve:
-        - created: fecha del primer commit en git (creación real)
-        - updated: fecha del último commit en git (última edición)
-        - timestamp: valor del campo 'timestamp' en frontmatter (last meaningful change)
-        - created_fm: valor del campo 'created' en frontmatter (fecha de creación OKF)
+    Returns:
+        - created: date of the first commit in git (real creation)
+        - updated: date of the last commit in git (last edit)
+        - timestamp: value of the 'timestamp' field in frontmatter (last meaningful change)
+        - created_fm: value of the 'created' field in frontmatter (OKF creation date)
 
     Args:
-        slug: Slug del concepto (ej: 'frameworks/tp3-cibernetico')
-        json_output: Si True, salida JSON
+        slug: Concept slug (e.g.: 'frameworks/tp3-cibernetico')
+        json_output: If True, JSON output
     """
     args = ["file-info", "--slug", slug]
     if json_output:
@@ -858,16 +858,16 @@ def file_info(slug: str, json_output: bool = False) -> str:
 
 @mcp.tool()
 def trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
-    """Rastrea referencias a una query en todas las capas del ecosistema OKF.
+    """Traces references to a query across all layers of the OKF ecosystem.
 
-    Útil antes de eliminar, renomvar o modificar componentes del sistema
-    (hooks, scripts, tools, configs, paths). Responde: ¿dónde se menciona X?
+    Useful before deleting, renaming or modifying system components
+    (hooks, scripts, tools, configs, paths). Answers: where is X mentioned?
 
     Args:
-        query: Término a buscar (ej: 'post-commit', 'sistema/skills')
-        layers: Capas a rastrear separadas por coma (default: todas).
-                vault — wikilinks + contenido .md del vault
-                code  — Python del MCP server (~/.hermes/mcp-servers/okf/)
+        query: Search term (e.g.: 'post-commit', 'sistema/skills')
+        layers: Layers to trace, comma-separated (default: all).
+                vault — wikilinks + .md content of the vault
+                code  — Python of the MCP server (~/.hermes/mcp-servers/okf/)
                 hooks — .git/hooks/*
                 cron  — sistema/cron/ + sistema/hermes-cron-jobs/
                 agents — AGENTS.md, CLAUDE.md, ~/.claude/CLAUDE.md
@@ -878,16 +878,16 @@ def trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
 
 @mcp.tool()
 def review() -> str:
-    """Busca conceptos con cyber.review_on vencido y los reporta.
+    """Finds concepts with expired cyber.review_on and reports them.
 
-    Ejecuta 'python3 -m cli review' que escanea TODAS las fechas review_on
-    del vault, sin filtrar por outcome. Más exhaustivo que search
-    porque detecta vencidos con cualquier outcome (pending, success, failure).
+    Runs 'python3 -m cli review' which scans ALL review_on dates
+    in the vault, without filtering by outcome. More exhaustive than search
+    because it detects expired items with any outcome (pending, success, failure).
     """
     return _run(["review"], tool_name="okf_review")
 
 
-# Inicializar DB al cargar el módulo
+# Initialize DB on module load
 _init_db()
 
 if __name__ == "__main__":

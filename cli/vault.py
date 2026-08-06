@@ -1,9 +1,9 @@
-"""Resolución de ruta del vault y descubrimiento de archivos.
+"""Vault path resolution and file discovery.
 
-Responsabilidades:
-- Determinar la ubicación del vault (CLI arg > $OKF_VAULT > ~/OKF-Vault)
-- Encontrar archivos .md del vault con exclusiones configuradas
-- Construir índice nombre→ruta para resolución de wikilinks
+Responsibilities:
+- Determine vault location (CLI arg > $OKF_VAULT > ~/OKF-Vault)
+- Find .md files in the vault with configured exclusions
+- Build name→path index for wikilink resolution
 """
 
 import os
@@ -20,15 +20,15 @@ EXCLUDE_DIRS = DEFAULT_EXCLUDE_DIRS.copy()
 
 
 def resolve_vault_path(cli_arg=None):
-    """Determina la ruta del vault.
+    """Determines the vault path.
 
-    Prioridad:
-        1. Argumento explícito pasado por CLI (Path o str)
-        2. Variable de entorno OKF_VAULT
+    Priority:
+        1. Explicit argument passed via CLI (Path or str)
+        2. OKF_VAULT environment variable
         3. ~/OKF-Vault (default)
 
     Returns:
-        Path absoluto al vault.
+        Absolute path to vault.
     """
     if cli_arg is not None:
         path = Path(cli_arg)
@@ -44,17 +44,17 @@ def resolve_vault_path(cli_arg=None):
 
 
 def _get_excludes(config=None):
-    """Obtiene exclusiones desde Config o usa las variables globales de módulo."""
+    """Gets exclusions from Config or falls back to module globals."""
     if config is not None:
         return config.exclude_files, config.exclude_dirs
     return EXCLUDE_FILES, EXCLUDE_DIRS
 
 
 def apply_config(config):
-    """Aplica exclusiones desde un objeto Config a las variables globales del módulo.
+    """Applies exclusions from a Config object to the module's global variables.
 
-    Llamar una vez al inicio, después de instanciar Config.
-    Mantiene backward compat con código que importa EXCLUDE_FILES/EXCLUDE_DIRS directamente.
+    Call once at startup, after instantiating Config.
+    Maintains backward compat with code that imports EXCLUDE_FILES/EXCLUDE_DIRS directly.
     """
     global EXCLUDE_FILES, EXCLUDE_DIRS
     EXCLUDE_FILES = config.exclude_files
@@ -62,16 +62,16 @@ def apply_config(config):
 
 
 def find_md_files(vault, exclude_files=None, exclude_dirs=None, config=None):
-    """Encuentra todos los archivos .md del vault que son conceptos.
+    """Finds all .md files in the vault that are concepts.
 
     Args:
-        vault: Path al vault.
-        exclude_files: Set de nombres de archivo a excluir (deprecado: usar config).
-        exclude_dirs: Set de nombres de directorio a excluir (deprecado: usar config).
-        config: Objeto Config (preferido sobre exclude_files/dirs explícitos).
+        vault: Path to vault.
+        exclude_files: Set of filenames to exclude (deprecated: use config).
+        exclude_dirs: Set of directory names to exclude (deprecated: use config).
+        config: Config object (preferred over explicit exclude_files/dirs).
 
     Returns:
-        Lista de Paths absolutos, ordenada.
+        List of absolute Paths, sorted.
     """
     if exclude_files is None and exclude_dirs is None:
         exclude_files, exclude_dirs = _get_excludes(config)
@@ -92,11 +92,11 @@ def find_md_files(vault, exclude_files=None, exclude_dirs=None, config=None):
 
 
 def build_name_index(vault, config=None):
-    """Construye índice filename → relpath para búsqueda global de wikilinks.
+    """Builds filename → relpath index for global wikilink search.
 
     Args:
-        vault: Path al vault.
-        config: Objeto Config (opcional).
+        vault: Path to vault.
+        config: Config object (optional).
 
     Returns:
         dict[str, str] — {filename: relpath}

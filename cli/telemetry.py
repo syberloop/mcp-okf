@@ -1,10 +1,10 @@
-"""Telemetría Cognitive Trace para la CLI del vault OKF.
+"""Cognitive Trace telemetry for the OKF vault CLI.
 
-Registra cada invocación de comando CLI en la base SQLite de Cognitive Trace
-y en el JSONL del plugin Obsidian, igual que hace el MCP server.
+Records every CLI command invocation in the Cognitive Trace SQLite database
+and in the Obsidian plugin JSONL, just like the MCP server does.
 
-La telemetría es best-effort: si falla, no interrumpe el comando.
-Se activa/desactiva vía config: features.cognitive_trace (default: True).
+Telemetry is best-effort: if it fails, it doesn't interrupt the command.
+Enabled/disabled via config: features.cognitive_trace (default: True).
 """
 
 import json
@@ -32,11 +32,11 @@ RESULT_EDGES_CAP = 500  # las aristas de un traverse pueden exceder los nodos (m
 
 
 def init(vault: Path, config=None) -> None:
-    """Inicializa la telemetría desde la configuración.
+    """Initializes telemetry from configuration.
 
     Args:
-        vault: Path al vault OKF.
-        config: Objeto Config cargado (opcional).
+        vault: Path to OKF vault.
+        config: Loaded Config object (optional).
     """
     global _db_path, _jsonl_path, _jsonl_dir, _enabled
 
@@ -67,7 +67,7 @@ def init(vault: Path, config=None) -> None:
 
 
 def _get_session_id() -> str:
-    """Devuelve el session_id del entorno o genera uno local."""
+    """Returns the session_id from the environment or generates a local one."""
     global _session_id
     if _session_id:
         return _session_id
@@ -83,7 +83,7 @@ def _get_session_id() -> str:
 
 
 def _ensure_db() -> None:
-    """Crea tablas e índices si no existen."""
+    """Creates tables and indexes if they don't exist."""
     if _db_path is None or _jsonl_dir is None or not _enabled:
         return
     _jsonl_dir.mkdir(parents=True, exist_ok=True)
@@ -144,7 +144,7 @@ def _ensure_db() -> None:
             # "duplicate column" es el caso esperado (ya migrada); el resto se reporta
             # sin romper el CLI (el telemetry nunca debe interrumpir una tool call)
             if "duplicate column" not in str(e).lower():
-                print(f"[telemetry] ALTER TABLE result_edges falló: {e}", file=sys.stderr)
+                print(f"[telemetry] ALTER TABLE result_edges failed: {e}", file=sys.stderr)
     except Exception:
         pass
 
@@ -152,7 +152,7 @@ def _ensure_db() -> None:
 def _persist_sqlite(tool_name: str, params: dict, exit_code: int,
                     duration_ms: int, nodes_count: int | None = None,
                     error: str | None = None, result_edges: list[dict] | None = None) -> None:
-    """Escribe el evento a SQLite."""
+    """Writes the event to SQLite."""
     if _db_path is None or not _enabled:
         return
     try:
@@ -178,7 +178,7 @@ def _persist_sqlite(tool_name: str, params: dict, exit_code: int,
 
 
 def _append_jsonl(event: dict) -> None:
-    """Escribe una línea JSON al event_log.jsonl."""
+    """Writes a JSON line to event_log.jsonl."""
     if _jsonl_path is None or not _enabled:
         return
     try:
@@ -192,9 +192,9 @@ def _append_jsonl(event: dict) -> None:
 
 
 def _extract_nodes(tool_name: str, params: dict, stdout: str) -> list[str] | None:
-    """Extrae paths de nodos del output de un comando.
+    """Extracts node paths from command output.
 
-    Soporta output --json y output textual (Markdown) de cada tool.
+    Supports --json output and text (Markdown) output from each tool.
     """
     if not stdout:
         return None
@@ -280,10 +280,10 @@ def _extract_nodes(tool_name: str, params: dict, stdout: str) -> list[str] | Non
 
 
 def _extract_edges(tool_name: str, params: dict, stdout: str) -> list[dict] | None:
-    """Extrae aristas resultantes (result_edges) del output de traverse.
+    """Extracts result edges (result_edges) from traverse output.
 
-    Fuente: output JSON (campo result_edges) o output textual ("via <type> ← <from>").
-    Alimenta la métrica de efectividad del anotado ontológico (matched/declared).
+    Source: JSON output (result_edges field) or text output ("via <type> ← <from>").
+    Feeds the ontological annotation effectiveness metric (matched/declared).
     """
     if tool_name != "okf_traverse" or not stdout:
         return None
@@ -312,15 +312,15 @@ def _extract_edges(tool_name: str, params: dict, stdout: str) -> list[dict] | No
 
 def record(tool_name: str, params: dict, exit_code: int,
            duration_ms: int, stdout: str = "", stderr: str = "") -> None:
-    """Registra un evento de tool en Cognitive Trace (SQLite + JSONL).
+    """Records a tool event in Cognitive Trace (SQLite + JSONL).
 
     Args:
-        tool_name: Nombre del comando (ej: 'traverse', 'read', 'search').
-        params: Diccionario con los parámetros usados.
-        exit_code: Código de salida (0 = éxito).
-        duration_ms: Duración en milisegundos.
-        stdout: Output estándar del comando (para extraer result_nodes).
-        stderr: Error estándar del comando.
+        tool_name: Command name (e.g.: 'traverse', 'read', 'search').
+        params: Dictionary with the parameters used.
+        exit_code: Exit code (0 = success).
+        duration_ms: Duration in milliseconds.
+        stdout: Standard output of the command (to extract result_nodes).
+        stderr: Standard error of the command.
     """
     if not _enabled:
         return
@@ -365,16 +365,16 @@ def record(tool_name: str, params: dict, exit_code: int,
 
 
 def wrap_command(tool_name: str, params: dict, func, *args, **kwargs):
-    """Wrapper que ejecuta un comando CLI y registra telemetría.
+    """Wrapper that runs a CLI command and records telemetry.
 
     Args:
-        tool_name: Nombre del comando.
-        params: Parámetros como dict (del argparse namespace).
-        func: Función run() del comando.
-        *args, **kwargs: Argumentos para func.
+        tool_name: Command name.
+        params: Parameters as dict (from argparse namespace).
+        func: Command's run() function.
+        *args, **kwargs: Arguments for func.
 
     Returns:
-        El exit_code retornado por func.
+        The exit_code returned by func.
     """
     start = time.monotonic()
     exit_code = 1

@@ -1,22 +1,22 @@
-"""Entry point del CLI OKF Vault.
+"""Entry point for the OKF Vault CLI.
 
-Uso:
-    python3 -m cli <comando> [opciones]
+Usage:
+    python3 -m cli <command> [options]
 
-Comandos:
-    search      Buscar conceptos y tareas pendientes
-    read        Leer un concepto (+ auto-incrementar reads)
-    traverse    Travesía semántica: frontmatter del concepto + vecindario
-    graph       Analizar el grafo de wikilinks
-    health      Verificación completa de integridad
-    index       Regenerar index.md y log.md
-    new         Crear un concepto nuevo
-    touch       Estadísticas de lecturas
-    dashboard   Generar dashboard.md
-    stale       Detector de obsolescencia semántica
-    review      Revisión cibernética (review_on vencido)
-    audit       Auditar frontmatter de todos los conceptos
-    validate    Validación estricta YAML pre-commit (sin fallback de regex)
+Commands:
+    search      Search concepts and pending tasks
+    read        Read a concept (+ auto-increment reads)
+    traverse    Semantic traversal: concept frontmatter + neighborhood
+    graph       Analyze the wikilink graph
+    health      Complete integrity check
+    index       Regenerate index.md and log.md
+    new         Create a new concept
+    touch       Read statistics
+    dashboard   Generate dashboard.md
+    stale       Semantic staleness detector
+    review      Cybernetic review (expired review_on)
+    audit       Audit frontmatter of all concepts
+    validate    Strict YAML pre-commit validation (no regex fallback)
 """
 
 import argparse
@@ -27,12 +27,12 @@ from pathlib import Path
 
 
 def build_parser():
-    """Construye el parser principal con todos los subcomandos."""
+    """Builds the main parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="okf",
-        description="CLI unificado para el vault OKF.",
+        description="Unified CLI for the OKF vault.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Ejemplos:\n"
+        epilog="Examples:\n"
                "  python3 -m cli search --todos\n"
                "  python3 -m cli read specs/okf-v01\n"
                "  python3 -m cli graph stats\n"
@@ -40,199 +40,199 @@ def build_parser():
                "  python3 -m cli new --type Decision --title \"...\" --description \"...\"",
     )
     parser.add_argument("--vault", type=str, default=None,
-                        help="Ruta al vault (default: $OKF_VAULT o ~/OKF-Vault)")
+                        help="Path to vault (default: $OKF_VAULT or ~/OKF-Vault)")
     parser.add_argument("--config", type=str, default=None,
-                        help="Ruta a .okf.config.yaml (default: <vault>/.okf.config.yaml)")
+                        help="Path to .okf.config.yaml (default: <vault>/.okf.config.yaml)")
 
-    subparsers = parser.add_subparsers(dest="command", help="Comando a ejecutar")
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # ── search ──
-    sp_search = subparsers.add_parser("search", help="Buscar conceptos y tareas")
+    sp_search = subparsers.add_parser("search", help="Search concepts and tasks")
     sp_search.add_argument("--query", type=str, default=None,
-                           help="Filtrar por texto en title, description y tags")
+                           help="Filter by text in title, description and tags")
     sp_search.add_argument("--type", dest="filter_type", type=str, default=None,
-                           help="Filtrar por tipo (Decision, Project, Spec, etc.)")
+                           help="Filter by type (Decision, Project, Spec, etc.)")
     sp_search.add_argument("--status", dest="filter_status", type=str, default=None,
-                           help="Filtrar por status (propuesta, aplicada, etc.)")
+                           help="Filter by status (propuesta, aplicada, etc.)")
     sp_search.add_argument("--todos", action="store_true", default=False,
-                           help="Buscar tareas - [ ] pendientes")
+                           help="Search pending - [ ] tasks")
     sp_search.add_argument("--all", action="store_true", default=False,
-                           help="Con --todos: incluir completadas - [x]")
+                           help="With --todos: include completed - [x]")
     sp_search.add_argument("--aging", action="store_true", default=False,
-                           help="Con --todos: mostrar antigüedad de tareas")
+                           help="With --todos: show task age")
     sp_search.add_argument("--include-specs", action="store_true", default=False,
-                           help="Con --todos: incluir checkboxes de type=Spec (criterios de aceptación, no tareas)")
+                           help="With --todos: include type=Spec checkboxes (acceptance criteria, not tasks)")
     sp_search.add_argument("--include-skills", action="store_true", default=False,
-                           help="Con --todos: incluir checkboxes de type=Skill (checklists de auto-auditoría, no tareas)")
+                           help="With --todos: include type=Skill checkboxes (self-audit checklists, not tasks)")
     sp_search.add_argument("--with-graph", action="store_true", default=False,
-                           help="Mostrar aristas tipadas entre los resultados al final")
+                           help="Show typed edges between results at the end")
     sp_search.add_argument("--json", action="store_true", default=False,
-                           help="Salida JSON")
+                           help="JSON output")
     sp_search.add_argument("--cyber-field", type=str, default=None,
-                           help="Filtrar por campo cyber: (sensor, outcome, etc.)")
+                           help="Filter by cyber field: (sensor, outcome, etc.)")
     sp_search.add_argument("--cyber-value", type=str, default=None,
-                           help="Valor del campo --cyber-field")
+                           help="Value for --cyber-field")
     sp_search.add_argument("--review-due", action="store_true", default=False,
-                           help="Solo conceptos con cyber.review_on <= hoy")
+                           help="Only concepts with cyber.review_on <= today")
     sp_search.add_argument("--since", type=str, default=None,
-                           help="Filtrar por timestamp >= fecha (ISO 8601, inclusivo)")
+                           help="Filter by timestamp >= date (ISO 8601, inclusive)")
     sp_search.add_argument("--until", type=str, default=None,
-                           help="Filtrar por timestamp <= fecha (ISO 8601, inclusivo)")
+                           help="Filter by timestamp <= date (ISO 8601, inclusive)")
 
     # ── read ──
-    sp_read = subparsers.add_parser("read", help="Leer un concepto")
-    sp_read.add_argument("target", type=str, nargs="?", help="Concepto a leer")
-    sp_read.add_argument("--offset", type=int, default=1, help="Línea de inicio")
-    sp_read.add_argument("--limit", type=int, default=500, help="Máx líneas")
+    sp_read = subparsers.add_parser("read", help="Read a concept")
+    sp_read.add_argument("target", type=str, nargs="?", help="Concept to read")
+    sp_read.add_argument("--offset", type=int, default=1, help="Start line")
+    sp_read.add_argument("--limit", type=int, default=500, help="Max lines")
     sp_read.add_argument("--no-touch", action="store_true", default=False,
-                         help="No incrementar contador reads")
+                         help="Do not increment reads counter")
 
     # ── traverse ──
     sp_traverse = subparsers.add_parser("traverse",
-                                        help="Travesía semántica del grafo")
+                                        help="Semantic graph traversal")
     sp_traverse.add_argument("target", type=str, nargs="?",
-                             help="Concepto origen (opcional si se usa --seeds)")
+                             help="Origin concept (optional if --seeds is used)")
     sp_traverse.add_argument("--seeds", type=str, nargs="+", default=None,
-                             help="Múltiples conceptos origen (unión + deduplicación)")
+                             help="Multiple origin concepts (union + deduplication)")
     sp_traverse.add_argument("--depth", type=int, default=1,
-                             help="Profundidad de travesía (default: 1)")
+                             help="Traversal depth (default: 1)")
     sp_traverse.add_argument("--direction", type=str, default="both",
                              choices=["both", "out", "in"],
-                             help="Dirección: both, out, in (default: both)")
+                             help="Direction: both, out, in (default: both)")
     sp_traverse.add_argument("--no-cyber", action="store_true", default=False,
-                             help="No seguir aristas cyber.corrects/corrected_by")
+                             help="Do not follow cyber.corrects/corrected_by edges")
     sp_traverse.add_argument("--json", action="store_true", default=False,
-                             help="Salida JSON")
+                             help="JSON output")
     sp_traverse.add_argument("--edge-type", dest="edge_type", type=str, default=None,
                              choices=["extiende", "refina", "fundamenta",
                                       "aplica", "depende", "corrige"],
-                             help="Declarar el tipo ontológico explorado (anotación; no filtra)")
+                             help="Declare the explored ontological type (annotation; does not filter)")
     sp_traverse.add_argument("--filter", action="store_true", default=False,
-                             help="Con --edge-type: excluir aristas que no son de ese tipo")
+                             help="With --edge-type: exclude edges not of that type")
 
     # ── graph ──
-    sp_graph = subparsers.add_parser("graph", help="Analizar el grafo de wikilinks")
+    sp_graph = subparsers.add_parser("graph", help="Analyze the wikilink graph")
     sp_graph.add_argument("subcommand", nargs="?", type=str,
                           help="stats|orphans|hubs|backlinks|deps|tags|bridges|cluster|path|dump|dirs|types|impact|suggest-edge-types")
     sp_graph.add_argument("args", nargs="*", type=str,
-                          help="Argumentos adicionales para el subcomando")
+                          help="Additional arguments for the subcommand")
     sp_graph.add_argument("--edge-type", dest="edge_type", type=str, default=None,
-                          help="Filtrar backlinks/deps por tipo de arista "
+                          help="Filter backlinks/deps by edge type "
                                "(extiende, refina, fundamenta, aplica, depende, corrige)")
     sp_graph.add_argument("--apply", action="store_true", default=False,
-                          help="Con suggest-edge-types: aplicar sugerencias ALTA")
+                          help="With suggest-edge-types: apply HIGH confidence suggestions")
     sp_graph.add_argument("--dry-run", action="store_true", default=False,
-                          help="Con suggest-edge-types --apply: previsualizar sin escribir")
+                          help="With suggest-edge-types --apply: preview without writing")
     sp_graph.add_argument("--min-score", dest="min_score", type=float, default=None,
-                          help="Con suggest-edge-types: score mínimo para aplicar "
-                               "(scoring semántico 0.0-1.0; default: config graph.suggest_min_score)")
+                          help="With suggest-edge-types: minimum score to apply "
+                               "(semantic scoring 0.0-1.0; default: config graph.suggest_min_score)")
 
     # ── health ──
-    sp_health = subparsers.add_parser("health", help="Chequeo completo de salud")
+    sp_health = subparsers.add_parser("health", help="Complete health check")
     sp_health.add_argument("--strict", action="store_true", default=False,
-                           help="Warnings causan exit 1")
+                           help="Warnings cause exit 1")
     sp_health.add_argument("--json", action="store_true", default=False,
-                           help="Salida JSON")
+                           help="JSON output")
 
     # ── index ──
-    sp_index = subparsers.add_parser("index", help="Regenerar index.md y log.md")
+    sp_index = subparsers.add_parser("index", help="Regenerate index.md and log.md")
 
     # ── new ──
-    sp_new = subparsers.add_parser("new", help="Crear un concepto nuevo")
+    sp_new = subparsers.add_parser("new", help="Create a new concept")
     sp_new.add_argument("--type", dest="concept_type", required=True,
                         help="Tipo: Decision, Plan, Project, Insight, MarcoTeorico, "
                              "LeccionAprendida, Tool, Spec")
-    sp_new.add_argument("--title", required=True, help="Título descriptivo")
-    sp_new.add_argument("--description", required=True, help="Resumen de una línea")
-    sp_new.add_argument("--tags", default=None, help="Tags separadas por coma")
+    sp_new.add_argument("--title", required=True, help="Descriptive title")
+    sp_new.add_argument("--description", required=True, help="One-line summary")
+    sp_new.add_argument("--tags", default=None, help="Comma-separated tags")
     sp_new.add_argument("--status", default=None,
-                        help="Estado: propuesta, aplicada, activo, etc.")
-    sp_new.add_argument("--resource", default=None, help="URI canónica externa")
+                        help="Status: propuesta, aplicada, activo, etc.")
+    sp_new.add_argument("--resource", default=None, help="External canonical URI")
     sp_new.add_argument("--cyber", action="store_true", default=False,
-                        help="Agregar bloque cyber:")
+                        help="Add cyber: block")
     sp_new.add_argument("--dry-run", action="store_true", default=False,
-                        help="Mostrar sin escribir")
+                        help="Preview without writing")
     sp_new.add_argument("--body", default=None,
-                        help="Contenido del body (reemplaza el template por defecto)")
+                        help="Body content (replaces the default template)")
     sp_new.add_argument("--body-file", default=None,
-                        help="Archivo con el contenido del body")
+                        help="File with body content")
     sp_new.add_argument("--link", dest="links", action="append", default=None,
-                        help="Link tipado: 'target:type' (repetible). "
-                             "Ej: --link frameworks/tp3:extiende")
+                        help="Typed link: 'target:type' (repeatable). "
+                             "e.g. --link frameworks/tp3:extiende")
 
     # ── touch ──
-    sp_touch = subparsers.add_parser("touch", help="Estadísticas de lecturas")
-    sp_touch.add_argument("target", nargs="?", type=str, help="Concepto a incrementar")
+    sp_touch = subparsers.add_parser("touch", help="Read statistics")
+    sp_touch.add_argument("target", nargs="?", type=str, help="Concept to increment")
     sp_touch.add_argument("--all", action="store_true", default=False,
-                          help="Mostrar stats de todos los conceptos")
+                          help="Show stats for all concepts")
 
     # ── trace ──
-    sp_trace = subparsers.add_parser("trace", help="Rastrear referencias en el ecosistema OKF")
-    sp_trace.add_argument("query", type=str, help="Término a buscar")
+    sp_trace = subparsers.add_parser("trace", help="Trace references across the OKF ecosystem")
+    sp_trace.add_argument("query", type=str, help="Search term")
     sp_trace.add_argument("--layers", type=str, default="vault,code,hooks,cron,agents",
-                          help="Capas a rastrear (default: todas)")
+                          help="Layers to trace (default: all)")
 
     # ── analytics ──
-    sp_analytics = subparsers.add_parser("analytics", help="Consultas analíticas sobre Cognitive Trace")
+    sp_analytics = subparsers.add_parser("analytics", help="Analytics queries on Cognitive Trace")
     sp_analytics.add_argument("--query", type=str, default="most_visited",
-                              help="Tipo de consulta (most_visited, session_heatmap, tool_usage, edge_type_usage, "
+                              help="Query type (most_visited, session_heatmap, tool_usage, edge_type_usage, "
                                    "daily_activity, node_timeline, error_summary, co_visited, "
                                    "read_ratio, session_diff, depth_stats, entry_points, prompts)")
     sp_analytics.add_argument("--limit", type=int, default=10,
-                              help="Límite de resultados (default 10)")
+                              help="Result limit (default 10)")
     sp_analytics.add_argument("--arg", type=str, default="",
-                              help="Argumento adicional (slug para node_timeline/co_visited, "
+                              help="Additional argument (slug for node_timeline/co_visited, "
                                    "'sessionA,sessionB' para session_diff)")
     sp_analytics.add_argument("--session-id", type=str, default="",
-                              help="Filtrar por sesión (vacío = actual vía $OKF_SESSION_ID)")
+                              help="Filter by session (empty = current via $OKF_SESSION_ID)")
 
     # ── dashboard ──
-    sp_dash = subparsers.add_parser("dashboard", help="Generar dashboard.md")
+    sp_dash = subparsers.add_parser("dashboard", help="Generate dashboard.md")
 
     # ── stale ──
-    sp_stale = subparsers.add_parser("stale", help="Detector de obsolescencia semántica")
+    sp_stale = subparsers.add_parser("stale", help="Semantic staleness detector")
     sp_stale.add_argument("--json", action="store_true", default=False,
-                          help="Salida JSON")
+                          help="JSON output")
 
     # ── session-metrics ──
-    sp_sm = subparsers.add_parser("session-metrics", help="Métricas agregadas de sesiones")
+    sp_sm = subparsers.add_parser("session-metrics", help="Aggregated session metrics")
     sp_sm.add_argument("--json", action="store_true", default=False,
-                       help="Salida JSON")
+                       help="JSON output")
 
     # ── review ──
-    sp_review = subparsers.add_parser("review", help="Revisión cibernética")
+    sp_review = subparsers.add_parser("review", help="Cybernetic review")
     sp_review.add_argument("--json", action="store_true", default=False,
-                           help="Salida JSON")
+                           help="JSON output")
     sp_review.add_argument("--count", action="store_true", default=False,
-                           help="Solo conteo")
+                           help="Count only")
 
     # ── audit ──
-    sp_audit = subparsers.add_parser("audit", help="Auditar frontmatter")
+    sp_audit = subparsers.add_parser("audit", help="Audit frontmatter")
 
     # ── validate ──
     sp_validate = subparsers.add_parser("validate",
-                                        help="Validación estricta YAML pre-commit")
+                                        help="Strict YAML pre-commit validation")
     sp_validate.add_argument("target", type=str, nargs="?", default=None,
-                             help="Archivo específico a validar (default: staged)")
+                             help="Specific file to validate (default: staged)")
     sp_validate.add_argument("--all", action="store_true", default=False,
-                             help="Validar todos los conceptos del vault")
+                             help="Validate all concepts in the vault")
 
     # ── file-info ──
-    sp_file_info = subparsers.add_parser("file-info", help="Metadatos de fecha de un concepto")
+    sp_file_info = subparsers.add_parser("file-info", help="Date metadata for a concept")
     sp_file_info.add_argument("--slug", type=str, required=True,
-                              help="Slug del concepto (ej: 'frameworks/tp3-cibernetico')")
+                              help="Concept slug (e.g. 'frameworks/tp3-cibernetico')")
     sp_file_info.add_argument("--json", action="store_true", default=False,
-                              help="Salida JSON")
+                              help="JSON output")
 
     return parser
 
 
 def main(argv=None):
-    """Punto de entrada principal.
+    """Main entry point.
 
     Args:
-        argv: Lista de argumentos (default: sys.argv[1:]).
-              Útil para invocar programáticamente: main(["search", "--todos"])
+        argv: Argument list (default: sys.argv[1:]).
+              Useful for programmatic invocation: main(["search", "--todos"])
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -246,8 +246,8 @@ def main(argv=None):
     vault = resolve_vault_path(getattr(args, "vault", None))
 
     if not vault.exists():
-        print(f"Error: vault no encontrado en {vault}", file=sys.stderr)
-        print("Usa --vault o settea $OKF_VAULT para especificar otra ruta.", file=sys.stderr)
+        print(f"Error: vault not found at {vault}", file=sys.stderr)
+        print("Use --vault or set $OKF_VAULT to specify another path.", file=sys.stderr)
         sys.exit(1)
 
     # Cargar configuración externalizada
@@ -351,7 +351,7 @@ def main(argv=None):
             _exit = run(args, vault, config) or 0
 
         else:
-            print(f"Comando desconocido: {command}", file=sys.stderr)
+            print(f"Unknown command: {command}", file=sys.stderr)
             parser.print_help()
             sys.exit(1)
     finally:
