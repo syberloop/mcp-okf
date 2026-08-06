@@ -66,12 +66,16 @@ def _get_git_blame_cache(vault, relpath):
         return None
 
 
-def find_todos(vault, include_done=False, with_aging=False, include_specs=False):
+def find_todos(vault, include_done=False, with_aging=False, include_specs=False, include_skills=False):
     """Encuentra todos los - [ ] y - [x] en archivos del vault.
 
     Por defecto EXCLUYE archivos con type: Spec — sus checkboxes son
     criterios de aceptación de un diseño (definen "done"), no tareas
     ejecutables. Pasar include_specs=True para incluirlos explícitamente.
+    También EXCLUYE archivos con type: Skill — sus checkboxes son
+    checklists de auto-auditoría del procedimiento (criterios de calidad),
+    no tareas del backlog (decisión 2026-08-06).
+    Pasar include_skills=True para incluirlos explícitamente.
     """
     todos = []
     blame_cache = {}
@@ -90,6 +94,9 @@ def find_todos(vault, include_done=False, with_aging=False, include_specs=False)
 
         # Criterios de aceptación de specs NO son tareas (decisión 2026-08-02)
         if not include_specs and fm.get("type") == "Spec":
+            continue
+        # Checklists de auto-auditoría de skills NO son tareas (decisión 2026-08-06)
+        if not include_skills and fm.get("type") == "Skill":
             continue
 
         if with_aging and relpath not in blame_cache:
@@ -454,7 +461,8 @@ def run(args, vault, config=None):
 
     if todos_mode:
         include_specs = getattr(args, "include_specs", False)
-        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs)
+        include_skills = getattr(args, "include_skills", False)
+        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs, include_skills=include_skills)
         agent_bus_signals = find_agent_bus_signals()
         todos.extend(agent_bus_signals)
         if json_out:
