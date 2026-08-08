@@ -33,7 +33,7 @@ pip install mcp
 ### 2. Installation
 
 ```bash
-git clone https://github.com/Jabar42/mcp-okf.git
+git clone https://github.com/syberloop/mcp-okf.git
 cd mcp-okf
 pip install .
 ```
