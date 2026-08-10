@@ -14,8 +14,13 @@ from cli.wikilinks import extract_links, resolve_link
 from cli.frontmatter import extract_tags, extract_typed_links, parse_frontmatter
 
 
-def build_graph(vault):
+def build_graph(vault, definitions=None):
     """Builds directed graph with typed and untyped edges, including scores.
+
+    Args:
+        vault: Path to vault root.
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults (cli.edge_types).
 
     Returns:
         {"relpath.md": {
@@ -108,6 +113,7 @@ def build_graph(vault):
             source_desc=str(src_fm.get("description", "")),
             target_desc=str(tgt_fm.get("description", "")),
             precedent_ratio=precedent,
+            definitions=definitions,
         )
 
         graph[src]["typed_out"].append({
@@ -764,7 +770,7 @@ def _insert_link_entry(fm_text: str, target: str, edge_type: str) -> str:
 
 
 def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
-                            min_score=0.0):
+                            min_score=0.0, definitions=None):
     """Suggests edge types for existing untyped wikilinks.
 
     Algorithm:
@@ -775,6 +781,15 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
     4. With --apply, writes only HIGH confidence ones to frontmatter.
     5. With --min-score N, only applies/writes edges with score >= N
        (semantic scoring 0.0-1.0, scoring-semantico plan).
+
+    Args:
+        vault: Path to vault root.
+        graph: Graph built with build_graph().
+        apply: If True, writes HIGH-confidence suggestions to frontmatter.
+        dry_run: If True, previews without writing.
+        min_score: Minimum semantic score to apply (0.0 = ALTA only).
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
     """
     from cli.edge_types import suggest_edge_type, score_edge
     from cli.frontmatter import parse_frontmatter
@@ -818,7 +833,7 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
                 pass
 
             suggested_type, confidence = suggest_edge_type(
-                source_type, target_type
+                source_type, target_type, definitions=definitions
             )
 
             # Cyber override: si source tiene cyber.corrects → target,
@@ -880,6 +895,7 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
                 source_desc=str(source_fm.get("description", "")) if source_fm else "",
                 target_desc=str(target_fm.get("description", "")) if target_fm else "",
                 precedent_ratio=0.0,
+                definitions=definitions,
             )
 
             suggestions[confidence].append({
@@ -985,22 +1001,24 @@ def run(args, vault, config=None):
             config.graph_suggest_min_score if config is not None else 0.0
         )
 
+    definitions = config.edge_type_definitions() if config else None
+
     if not subcommand:
         # Default: dump
-        graph = build_graph(vault)
+        graph = build_graph(vault, definitions=definitions)
         print(_cmd_dump(graph))
         return 0
 
     # suggest-edge-types solo necesita build_graph, no tag_index
     if subcommand == "suggest-edge-types":
-        graph = build_graph(vault)
+        graph = build_graph(vault, definitions=definitions)
         print(_cmd_suggest_edge_types(
             vault, graph, apply=apply_flag, dry_run=dry_run_flag,
-            min_score=min_score
+            min_score=min_score, definitions=definitions
         ))
         return 0
 
-    graph = build_graph(vault)
+    graph = build_graph(vault, definitions=definitions)
     tag_index = build_tag_index(vault)
 
     if subcommand == "stats":

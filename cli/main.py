@@ -159,6 +159,11 @@ def build_parser():
     sp_new.add_argument("--link", dest="links", action="append", default=None,
                         help="Typed link: 'target:type' (repeatable). "
                              "e.g. --link frameworks/tp3:extiende")
+    sp_new.add_argument("--entity", default=None,
+                        help="Entity slug for by_entity types (e.g.: type=Cliente "
+                             "entity=Lopcort → clientes/Lopcort/<slug>.md). "
+                             "Required when the type groups by entity "
+                             "(types.by_entity in config).")
 
     # ── touch ──
     sp_touch = subparsers.add_parser("touch", help="Read statistics")

@@ -665,7 +665,7 @@ def stale(json_output: bool = False) -> str:
 
 
 @mcp.tool()
-def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "", links: str = "") -> str:
+def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "", links: str = "", entity: str = "") -> str:
     """Creates a new concept in the OKF vault with consistent frontmatter.
 
     ALWAYS use this instead of write_file to create concepts.
@@ -681,6 +681,9 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
         body: Full body content (optional — if omitted, uses default template)
         links: Comma-separated typed links, format target:type
                (e.g.: 'frameworks/tp3:extiende,decisions/criterio:refina')
+        entity: Entity slug for by_entity types (e.g.: type=Cliente entity=Lopcort
+                → clientes/Lopcort/<slug>.md). Required when the type groups
+                by entity (types.by_entity in config).
     """
     args = ["new", "--type", type, "--title", title, "--description", description]
     if tags:
@@ -698,6 +701,8 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
             link = link.strip()
             if link:
                 args += ["--link", link]
+    if entity:
+        args += ["--entity", entity]
     return _run(args, tool_name="okf_new", params={
         "type": type, "title": title, "description": description,
         "tags": tags, "status": status, "cyber": cyber, "dry_run": dry_run,

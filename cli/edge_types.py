@@ -96,19 +96,39 @@ EDGE_TYPE_DEFINITIONS = {
 VALID_EDGE_TYPES = frozenset(EDGE_TYPE_DEFINITIONS.keys())
 
 
-def suggest_edge_type(type_origen: str, type_destino: str) -> tuple:
+def resolve_definitions(definitions=None) -> dict:
+    """Returns the effective edge-type definitions (config override or defaults).
+
+    Args:
+        definitions: Optional dict from config.edge_types. If None, uses the
+                     embedded defaults (EDGE_TYPE_DEFINITIONS) — behavior
+                     identical to vaults without configuration.
+
+    Returns:
+        dict: Effective EDGE_TYPE_DEFINITIONS-compatible dict.
+    """
+    if definitions is None:
+        return EDGE_TYPE_DEFINITIONS
+    return definitions
+
+
+def suggest_edge_type(type_origen: str, type_destino: str,
+                      definitions=None) -> tuple:
     """Suggests the most likely edge_type for a pair of types.
 
     Args:
         type_origen: Type of source node (e.g.: 'Insight').
         type_destino: Type of target node (e.g.: 'MarcoTeorico').
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
 
     Returns:
         tuple[str, str]: (edge_type, confidence) where confidence ∈ {"ALTA", "MEDIA", "BAJA"}.
         If no useful suggestion, returns ("extiende", "BAJA").
     """
+    defs = resolve_definitions(definitions)
     matches = []
-    for etype, defn in EDGE_TYPE_DEFINITIONS.items():
+    for etype, defn in defs.items():
         pairs = defn.get("valid_pairs", [])
         if (type_origen, type_destino) in pairs:
             matches.append(etype)
@@ -122,23 +142,31 @@ def suggest_edge_type(type_origen: str, type_destino: str) -> tuple:
 
 
 def validate_cross_type_pair(type_origen: str, type_destino: str,
-                              edge_type: str) -> list:
+                              edge_type: str, definitions=None) -> list:
     """Validates a (source, target, edge_type) pair against EDGE_TYPE_DEFINITIONS.
 
     Returns list of warnings (empty if all OK). Validation is only
     for warnings — non-blocking.
+
+    Args:
+        type_origen: Type of source node (e.g.: 'Insight').
+        type_destino: Type of target node (e.g.: 'MarcoTeorico').
+        edge_type: Edge type (e.g.: 'extiende').
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
 
     Warnings include:
     - Unknown edge type.
     - Atypical pair: the (source_type, target_type) pair is not in valid_pairs.
     - Alternative type suggestion if one exists.
     """
+    defs = resolve_definitions(definitions)
     warnings = []
 
-    if edge_type not in EDGE_TYPE_DEFINITIONS:
+    if edge_type not in defs:
         return [f"Tipo de arista desconocido: '{edge_type}'"]
 
-    defn = EDGE_TYPE_DEFINITIONS[edge_type]
+    defn = defs[edge_type]
     valid_pairs = defn.get("valid_pairs", [])
 
     # corrige no tiene restricción de pares
@@ -147,7 +175,8 @@ def validate_cross_type_pair(type_origen: str, type_destino: str,
 
     if (type_origen, type_destino) not in valid_pairs:
         # Buscar sugerencia de tipo alternativo
-        alt_type, confidence = suggest_edge_type(type_origen, type_destino)
+        alt_type, confidence = suggest_edge_type(
+            type_origen, type_destino, definitions=definitions)
         if confidence in ("ALTA", "MEDIA") and alt_type != edge_type:
             warnings.append(
                 f"Par atípico: '{type_origen}' {edge_type} '{type_destino}'. "
@@ -212,6 +241,7 @@ def score_edge(
     source_desc: str,
     target_desc: str,
     precedent_ratio: float = 0.0,
+    definitions=None,
 ) -> float:
     """Numeric score 0.0-1.0 for a typed edge based on 4 semantic signals.
 
@@ -225,6 +255,8 @@ def score_edge(
         target_desc: Description of target node.
         precedent_ratio: Ratio 0.0-1.0 of precedents in the graph
                         (how many other nodes with the same type-pair use this edge_type).
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
 
     Returns:
         float: Score 0.0-1.0 where >0.7 is strong, <0.4 is weak.
@@ -235,11 +267,12 @@ def score_edge(
         3. Description similarity (0.20): Overlap of significant terms.
         4. Graph precedent (0.15): Precedents in the graph.
     """
+    defs = resolve_definitions(definitions)
     score = 0.0
 
     # 1. Structural fit (0.40)
-    if edge_type in EDGE_TYPE_DEFINITIONS:
-        defn = EDGE_TYPE_DEFINITIONS[edge_type]
+    if edge_type in defs:
+        defn = defs[edge_type]
         valid_pairs = defn.get("valid_pairs", [])
         if not valid_pairs:  # 'corrige' — sin restricción
             score += 0.40

@@ -231,7 +231,8 @@ def extract_typed_links(md_path):
     return result
 
 
-def validate_cross_type(source_type, source_path, links, vault, graph):
+def validate_cross_type(source_type, source_path, links, vault, graph,
+                        definitions=None):
     """Non-blocking cross-type validation for typed edges.
 
     Verifies that (source_type, target_type, edge_type) pairs are
@@ -240,26 +241,28 @@ def validate_cross_type(source_type, source_path, links, vault, graph):
     deprecated target.
 
     Args:
-        source_type: Type of the source node (str).
-        source_path: Relative path of the source node (str).
-        links: List of dicts {"target": str, "type": str}.
+        source_type: Type of the source node (e.g.: 'Insight').
+        source_path: Relative path of the source node (e.g.: 'insights/foo.md').
+        links: List of dicts {"target": relpath.md, "type": edge_type}.
         vault: Path to vault root.
         graph: Graph built with build_graph().
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults (cli.edge_types).
 
     Returns:
         list[str]: List of warnings (empty = all OK).
     """
-    from cli.edge_types import validate_cross_type_pair, EDGE_TYPE_DEFINITIONS
+    from cli.edge_types import validate_cross_type_pair
 
     warnings = []
 
     for link in links:
         target_path = link["target"]
         edge_type = link["type"]
-
-        # Obtener type del destino desde el frontmatter
-        target_file = vault / target_path
         target_type = "?"
+
+        # Resolver type del target
+        target_file = vault / target_path
         if target_file.exists():
             try:
                 text = target_file.read_text(encoding="utf-8")
@@ -271,7 +274,7 @@ def validate_cross_type(source_type, source_path, links, vault, graph):
 
         # Validar par cross-type
         pair_warnings = validate_cross_type_pair(
-            source_type, target_type, edge_type
+            source_type, target_type, edge_type, definitions=definitions
         )
         for w in pair_warnings:
             warnings.append(

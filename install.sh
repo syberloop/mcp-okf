@@ -97,12 +97,26 @@ else
     VAULT="${VAULT/#\~/$HOME}"
 fi
 
-# Resolve to absolute path; create if missing
+# Resolve to absolute path
 VAULT="$(cd "$VAULT" 2>/dev/null && pwd || echo "")"
+
 if [ -z "$VAULT" ] || [ ! -d "$VAULT" ]; then
-    echo -e "  ${YELLOW}Directory does not exist — creating.${NC}"
-    mkdir -p "${USER_VAULT:-$HOME/OKF-Vault}"
-    VAULT="$(cd "${USER_VAULT:-$HOME/OKF-Vault}" && pwd)"
+    echo -e "  ${YELLOW}Directory does not exist.${NC}"
+    read -r -p "  Create a fresh OKF demo vault here? [y/N]: " SEED_DEMO
+    if [ "${SEED_DEMO,,}" = "y" ]; then
+        PARENT="$(dirname "${USER_VAULT:-$HOME/OKF-Vault}")"
+        NAME="$(basename "${USER_VAULT:-$HOME/OKF-Vault}")"
+        mkdir -p "$PARENT"
+        echo "  Cloning https://github.com/syberloop/okf-demo ..."
+        git clone --depth 1 https://github.com/syberloop/okf-demo.git "$PARENT/$NAME" 2>&1 | tail -2
+        VAULT="$PARENT/$NAME"
+        # A freshly cloned demo needs no config (it ships .okf.config.yaml).
+        echo -e "  ${GREEN}✓${NC} Demo vault seeded at ${GREEN}$VAULT${NC}"
+    else
+        echo -e "  Creating empty directory."
+        mkdir -p "${USER_VAULT:-$HOME/OKF-Vault}"
+        VAULT="$(cd "${USER_VAULT:-$HOME/OKF-Vault}" && pwd)"
+    fi
 fi
 echo -e "  Vault: ${GREEN}$VAULT${NC}"
 
@@ -191,17 +205,32 @@ if $WITH_COGNITIVE_TRACE; then
     if [ -d "$VAULT/.obsidian" ]; then
         echo -e "  ${GREEN}✓${NC} Obsidian vault detected at $VAULT/.obsidian/"
         echo ""
-        echo "  ── Cognitive Trace Plugin ──"
-        echo "  The plugin visualizes agent activity as an interactive graph."
+
+        PLUGIN_DIR="$VAULT/.obsidian/plugins/cognitive-trace"
+        if [ -d "$PLUGIN_DIR/.git" ]; then
+            echo -e "  ${YELLOW}⚠${NC}  Plugin already installed at $PLUGIN_DIR — skipping (idempotent)"
+        else
+            echo "  Cloning the plugin (https://github.com/syberloop/cognitive-trace)..."
+            mkdir -p "$VAULT/.obsidian/plugins"
+            git clone --depth 1 https://github.com/syberloop/cognitive-trace.git "$PLUGIN_DIR" 2>&1 | tail -2
+            if [ -d "$PLUGIN_DIR" ]; then
+                echo -e "  ${GREEN}✓${NC} Plugin cloned to $PLUGIN_DIR"
+                if command -v npm &>/dev/null; then
+                    echo "  Building main.js (npm install + npm run build)..."
+                    (cd "$PLUGIN_DIR" && npm install --silent && npm run build 2>&1 | tail -2)
+                    echo -e "  ${GREEN}✓${NC} main.js built"
+                else
+                    echo -e "  ${YELLOW}⚠${NC}  npm not found — run 'npm install && npm run build' in $PLUGIN_DIR"
+                fi
+            else
+                echo -e "  ${RED}Error: clone failed.${NC}"
+            fi
+        fi
         echo ""
-        echo "  To install:"
-        echo "    1. Copy the plugin directory into your Obsidian plugins:"
-        echo "       cp -r <cognitive-trace-plugin> \\"
-        echo "           $VAULT/.obsidian/plugins/cognitive-trace/"
-        echo "    2. Open Obsidian → Settings → Community Plugins"
-        echo "    3. Enable 'Cognitive Trace'"
-        echo "    4. Restart Obsidian"
-        echo "    5. Verify: python3 -m cli analytics"
+        echo "  To enable in Obsidian:"
+        echo "    1. Open Obsidian → Settings → Community Plugins"
+        echo "    2. Enable 'Cognitive Trace'"
+        echo "    3. Verify: python3 -m cli analytics"
         echo ""
         echo "  The plugin reads event_log.jsonl from the plugin directory"
         echo "  and renders traversals, reads, and decisions over time."

@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from cli.edge_types import EDGE_TYPE_DEFINITIONS
+
 
 # ── Defaults embebidos ──────────────────────────────────────────────────────
 # Réplica exacta de los hardcodeos actuales. Si no existe .okf.config.yaml,
@@ -31,6 +33,7 @@ DEFAULTS: dict[str, Any] = {
         ],
         "cyber": ["Sistema", "Agente", "Decision", "Plan", "Project", "Insight"],
         "excluded_cyber": ["MarcoTeorico", "LeccionAprendida", "Tool", "Spec"],
+        "by_entity": [],
         "directory": {
             "Sistema": "sistema",
             "Agente": "agentes",
@@ -181,6 +184,11 @@ DEFAULTS: dict[str, Any] = {
             "(Referencia a la instancia concreta en nuestro ecosistema)\n"
         ),
     },
+    # Vocabulario de aristas tipadas (decisión 2026-08-10: configurable, no fijo).
+    # Los defaults viven en cli.edge_types.EDGE_TYPE_DEFINITIONS. Aquí se
+    # declaran SOLO los overrides del vault: valid_pairs adicionales se unen
+    # a los defaults (no reemplazan), y un edge_type nuevo entra completo.
+    "edge_types": {},
 }
 
 
@@ -263,8 +271,65 @@ class Config:
         return set(self._data["types"]["excluded_cyber"])
 
     @property
+    def types_by_entity(self) -> set[str]:
+        """Types that group by entity (one subdirectory per instance).
+
+        Declared in config 'types.by_entity' (e.g.: ['Cliente'] → the CLI
+        creates clientes/<entity>/<slug>.md instead of clientes/<slug>.md).
+        Decision 2026-08-10.
+        """
+        by_entity = self._data["types"].get("by_entity", [])
+        return set(by_entity)
+
+    @property
     def types_directory(self) -> dict[str, str]:
         return dict(self._data["types"]["directory"])
+
+    def edge_type_definitions(self) -> dict:
+        """Effective edge type definitions: embedded defaults + config overrides.
+
+        Resolution (decisión 2026-08-10 — el vocabulario de aristas es
+        configurable, no fijo):
+        - valid_pairs declarados en config se UNEN a los defaults del tipo
+          (no reemplazan — permite agregar pares sin reescribir la lista).
+        - Un edge_type nuevo en config entra completo (definición propia).
+        - Propiedades escalares (description, transitive, inverse) se
+          sobreescriben si el usuario las declara.
+
+        Returns:
+            dict: EDGE_TYPE_DEFINITIONS-compatible dict.
+        """
+        import copy
+
+        result = copy.deepcopy(EDGE_TYPE_DEFINITIONS)
+        overrides = self._data.get("edge_types", {}) or {}
+        for etype, defn in overrides.items():
+            if not isinstance(defn, dict):
+                continue
+            if etype in result:
+                extra_pairs = defn.get("valid_pairs", [])
+                if isinstance(extra_pairs, list) and extra_pairs:
+                    existing = [
+                        tuple(p) for p in result[etype].get("valid_pairs", [])
+                    ]
+                    for pair in extra_pairs:
+                        t = tuple(pair)
+                        if t not in existing:
+                            existing.append(t)
+                    result[etype]["valid_pairs"] = existing
+                for key, value in defn.items():
+                    if key != "valid_pairs":
+                        result[etype][key] = value
+            else:
+                # Edge type nuevo: entra completo (valid_pairs normalizado
+                # a tuplas para que el lookup de pares funcione — mismo
+                # tratamiento que el branch de unión arriba).
+                new_defn = copy.deepcopy(defn)
+                pairs = new_defn.get("valid_pairs", [])
+                if isinstance(pairs, list):
+                    new_defn["valid_pairs"] = [tuple(p) for p in pairs]
+                result[etype] = new_defn
+        return result
 
     @property
     def stale_timestamp_days(self) -> int:

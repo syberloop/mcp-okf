@@ -200,7 +200,7 @@ def _check_broken_wikilinks(body, rel, vault, fm=None):
     return errors
 
 
-def _check_edge_type_consistency(filepath, vault):
+def _check_edge_type_consistency(filepath, vault, definitions=None):
     """Detects inconsistencies in typed edges of the links: field.
 
     Verifies:
@@ -209,6 +209,12 @@ def _check_edge_type_consistency(filepath, vault):
     - corrige without deprecated target nor cyber.corrected_by (ERROR)
     - Atypical pair (via validate_cross_type_pair) with semantic score
       (WARNING — informational, scoring-semantico plan: prioritized by score)
+
+    Args:
+        filepath: Path of the file to validate.
+        vault: Path to vault root.
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
 
     Returns:
         tuple[list[str], list[str]]: (errors, warnings).
@@ -231,6 +237,7 @@ def _check_edge_type_consistency(filepath, vault):
     if not isinstance(links, list):
         return errors, warnings
 
+    valid_edge_types = set(definitions) if definitions else VALID_EDGE_TYPES
     rel = str(filepath.relative_to(vault))
     src_type = str(fm.get("type", ""))
 
@@ -241,7 +248,7 @@ def _check_edge_type_consistency(filepath, vault):
         target = str(link.get("target", ""))
         edge_type = str(link.get("type", ""))
 
-        if edge_type not in VALID_EDGE_TYPES:
+        if edge_type not in valid_edge_types:
             errors.append(
                 f"  links: unknown type '{edge_type}' in {rel} → {target}"
             )
@@ -286,7 +293,8 @@ def _check_edge_type_consistency(filepath, vault):
         except Exception:
             pass
 
-        pair_warnings = validate_cross_type_pair(src_type, tgt_type, edge_type)
+        pair_warnings = validate_cross_type_pair(
+            src_type, tgt_type, edge_type, definitions=definitions)
         if pair_warnings:
             src_tags = fm.get("tags", [])
             tgt_tags = tgt_fm.get("tags", []) if tgt_fm else []
@@ -307,6 +315,7 @@ def _check_edge_type_consistency(filepath, vault):
                 source_desc=str(fm.get("description", "")),
                 target_desc=str(tgt_fm.get("description", "")) if tgt_fm else "",
                 precedent_ratio=0.0,
+                definitions=definitions,
             )
             for w in pair_warnings:
                 warnings.append(f"  {w} [score: {s:.2f}]")
@@ -321,8 +330,14 @@ def _check_edge_type_consistency(filepath, vault):
     return errors, warnings
 
 
-def _validate_file(filepath, vault):
+def _validate_file(filepath, vault, definitions=None):
     """Validates the frontmatter and wikilinks of a .md file.
+
+    Args:
+        filepath: Path of the file to validate.
+        vault: Path to vault root.
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
 
     Returns:
         tuple[bool, str]: (ok, error_message). ok=True if valid.
@@ -404,7 +419,8 @@ def _validate_file(filepath, vault):
         all_errors.append(f"wikilinks apuntan a archivos inexistentes:\n" + "\n".join(broken))
 
     # ── Validación 7: Consistencia de aristas tipadas ──
-    edge_errors, edge_warnings = _check_edge_type_consistency(filepath, vault)
+    edge_errors, edge_warnings = _check_edge_type_consistency(
+        filepath, vault, definitions=definitions)
     if edge_errors:
         all_errors.append(f"inconsistencias en links tipados:\n" + "\n".join(edge_errors))
     if edge_warnings:
@@ -461,13 +477,14 @@ def run(args, vault, config=None):
             return 0
 
     # Validar
+    definitions = config.edge_type_definitions() if config else None
     ok_count = 0
     errors = []
 
     for f in files:
         if not f.exists():
             continue
-        is_ok, msg = _validate_file(f, vault)
+        is_ok, msg = _validate_file(f, vault, definitions=definitions)
         if is_ok:
             ok_count += 1
         else:

@@ -26,8 +26,25 @@ from pathlib import Path
 
 from cli.edge_types import VALID_EDGE_TYPES
 
-# Vocabulario de aristas tipadas para SQL (drift-free: se genera de edge_types.py)
-_EDGE_TYPES_SQL = "(" + ",".join(f"'{t}'" for t in sorted(VALID_EDGE_TYPES)) + ")"
+
+def _edge_types_sql(definitions=None) -> str:
+    """Vocabulario de aristas tipadas para SQL (drift-free).
+
+    Se genera del vocabulario efectivo: defaults embebidos o config
+    edge_types (decisión 2026-08-10 — vocabulario configurable).
+
+    Args:
+        definitions: Optional config-provided edge type definitions. If None,
+                     uses the embedded defaults.
+
+    Returns:
+        str: SQL fragment "( 'aplica', 'corrige', ... )".
+    """
+    if definitions:
+        types = sorted(definitions.keys())
+    else:
+        types = sorted(VALID_EDGE_TYPES)
+    return "(" + ",".join(f"'{t}'" for t in types) + ")"
 
 
 # ── Helpers ──
@@ -299,7 +316,7 @@ def _query_prompts(conn, limit, arg):
     return "\n".join(lines)
 
 
-def _query_edge_type_usage(conn, limit):
+def _query_edge_type_usage(conn, limit, definitions=None):
     """Ontological capability usage: % of traverses with edge_type.
 
     Measures the success criterion of Decision "Mandatory ontological reasoning"
@@ -366,7 +383,7 @@ def _query_edge_type_usage(conn, limit):
                WHERE e.tool IN ('okf_traverse', 'traverse', 'mcp__okf__traverse')
                  AND e.result_edges IS NOT NULL
                  AND COALESCE(json_extract(e.params, '$.edge_type'), '') != ''
-                 AND json_extract(je.value, '$.type') IN {_EDGE_TYPES_SQL}
+                 AND json_extract(je.value, '$.type') IN {_edge_types_sql(definitions)}
                GROUP BY e.id
            )
            GROUP BY declared ORDER BY traverses DESC"""
@@ -403,7 +420,7 @@ def _query_edge_type_usage(conn, limit):
                    WHERE e.tool IN ('okf_traverse', 'traverse', 'mcp__okf__traverse')
                      AND e.result_edges IS NOT NULL
                      AND COALESCE(json_extract(e.params, '$.edge_type'), '') != ''
-                     AND json_extract(je.value, '$.type') IN {_EDGE_TYPES_SQL}
+                     AND json_extract(je.value, '$.type') IN {_edge_types_sql(definitions)}
                    GROUP BY e.id, zone
                )
                GROUP BY zone HAVING COUNT(*) >= 3
@@ -466,6 +483,7 @@ def run(args, vault, config=None):
     session_id = args.session_id
 
     try:
+        definitions = config.edge_type_definitions() if config else None
         with sqlite3.connect(str(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             handler = QUERIES[query]
@@ -477,6 +495,8 @@ def run(args, vault, config=None):
                 kwargs["arg"] = arg
             if "session_id" in sig.parameters:
                 kwargs["session_id"] = session_id
+            if "definitions" in sig.parameters:
+                kwargs["definitions"] = definitions
             result = handler(**kwargs)
             print(result)
             return 0

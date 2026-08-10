@@ -323,10 +323,12 @@ def run(args, vault, config=None):
     body_text = getattr(args, "body", None)
     body_file = getattr(args, "body_file", None)
     links_raw = getattr(args, "links", None)
+    entity = getattr(args, "entity", None)
 
     # Resolver desde config o fallback a defaults
     valid_types = set(config.types_valid) if config else VALID_TYPES
     type_dir = dict(config.types_directory) if config else TYPE_DIR
+    by_entity = set(config.types_by_entity) if config else set()
 
     if concept_type not in valid_types:
         print(f"❌ Invalid type: '{concept_type}'", file=sys.stderr)
@@ -340,6 +342,23 @@ def run(args, vault, config=None):
     if concept_type == "Skill":
         filename = "SKILL.md"
         filepath = vault / subdir / slug / filename
+    elif concept_type in by_entity:
+        # by_entity: un subdirectorio por instancia (decisión 2026-08-10).
+        # Ej: type=Cliente entity=Lopcort → clientes/Lopcort/lopcort-com.md
+        if not entity or not str(entity).strip():
+            print(
+                f"❌ Type '{concept_type}' groups by entity: "
+                f"the 'entity' parameter is required "
+                f"(e.g.: entity='Lopcort' → {subdir}/Lopcort/<slug>.md).",
+                file=sys.stderr,
+            )
+            return 1
+        entity_slug = _slugify(str(entity).strip())
+        if not entity_slug:
+            print(f"❌ Invalid entity: '{entity}'", file=sys.stderr)
+            return 1
+        filename = f"{slug}.md"
+        filepath = vault / subdir / entity_slug / filename
     else:
         filename = f"{slug}.md"
         filepath = vault / subdir / filename
@@ -362,16 +381,19 @@ def run(args, vault, config=None):
         from cli.commands.graph import build_graph
         from cli.frontmatter import validate_cross_type
 
+        definitions = config.edge_type_definitions() if config else None
+        valid_edge_types = set(definitions) if definitions else VALID_EDGE_TYPES
+
         graph = build_graph(vault)
 
         for link in parsed_links:
             target = link["target"]
             edge_type = link["type"]
 
-            if edge_type not in VALID_EDGE_TYPES:
+            if edge_type not in valid_edge_types:
                 print(
                     f"❌ Invalid edge type: '{edge_type}'. "
-                    f"Use: {', '.join(sorted(VALID_EDGE_TYPES))}",
+                    f"Use: {', '.join(sorted(valid_edge_types))}",
                     file=sys.stderr,
                 )
                 return 1
@@ -410,8 +432,11 @@ def run(args, vault, config=None):
             seen.add(key)
 
         source_path = f"{subdir}/{filename}"
+        if concept_type in by_entity and entity:
+            source_path = f"{subdir}/{_slugify(str(entity).strip())}/{filename}"
         cross_warnings = validate_cross_type(
-            concept_type, source_path, parsed_links, vault, graph
+            concept_type, source_path, parsed_links, vault, graph,
+            definitions=definitions,
         )
         for w in cross_warnings:
             print(f"⚠️  {w}", file=sys.stderr)
