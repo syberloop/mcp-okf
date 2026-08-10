@@ -40,7 +40,27 @@ pip install .
 
 This installs the `okf-mcp` command in your PATH.
 
-### 3. Configure your vault
+> The installer can also seed a fresh demo vault (clones `syberloop/okf-demo`) when
+> the target directory doesn't exist. The demo ships with the Cognitive Trace
+> plugin versioned inside the tree — no extra clone needed.
+
+### 3. Updating an existing installation
+
+```bash
+./install.sh --update
+```
+
+Pulls the vault (if it's a git repo, e.g. a demo clone), rebuilds the Cognitive
+Trace plugin if present, and reinstalls the MCP package. Safe on demo-seeded
+installations. Use `--dry-run` to preview:
+
+```bash
+./install.sh --update --dry-run
+```
+
+After an update, restart your MCP client to load the new server code.
+
+### 4. Configure your vault
 
 Copy the example config to your vault root and edit it:
 
@@ -62,7 +82,7 @@ Vault resolution order:
 2. `$OKF_VAULT` environment variable
 3. `~/OKF-Vault` (default)
 
-### 4. Run the health check
+### 5. Run the health check
 
 ```bash
 python3 -m cli health --vault ~/my-vault
@@ -70,7 +90,7 @@ python3 -m cli health --vault ~/my-vault
 
 If you see `Health: 9/9`, your vault is ready.
 
-### 5. Register the MCP with your agent
+### 6. Register the MCP with your agent
 
 **Claude Code** (`~/.claude/.mcp.json`):
 

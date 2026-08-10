@@ -91,7 +91,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "exclude": {
         "files": ["index.md", "log.md", "dashboard.md"],
-        "dirs": [".git", ".obsidian", "Templates", "scripts", "references", "assets"],
+        "dirs": [".git", ".obsidian", "node_modules", "Templates", "scripts", "references", "assets"],
     },
     "features": {
         "cognitive_trace": True,
