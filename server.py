@@ -862,6 +862,52 @@ def file_info(slug: str, json_output: bool = False) -> str:
 
 
 @mcp.tool()
+def canvas(action: str, path: str = "", slug: str = "", algorithm: str = "auto",
+           depth: int = 1, fix: bool = False, dry_run: bool = False,
+           output: str = "") -> str:
+    """Generates, layouts and validates Obsidian .canvas maps of the vault graph.
+
+    The .canvas format is the same graph drawn in 2D — the system drawing
+    itself (corteza visual layer). Three actions:
+      - validate: sensor. Checks JSON, IDs, grid alignment, overlaps,
+        z-index, placeholders. Returns valid/warnings/errors. --fix auto-aligns.
+      - layout:   actuador. Re-layouts a canvas with an algorithm
+        (grid, dagre, radial, force, linear, auto).
+      - generate: materializes the vault graph around a concept as a canvas.
+        BFS from slug at depth, typed edges become edge labels (extiende,
+        refina...). Output defaults to mapas/<slug>.canvas.
+
+    Args:
+        action: One of 'validate', 'layout', 'generate'
+        path: Path to .canvas file (validate/layout)
+        slug: Root concept slug, e.g. 'insights/canvas-como-corteza-visual' (generate)
+        algorithm: Layout algorithm: grid, dagre, radial, force, linear, auto (layout/generate)
+        depth: BFS depth from root concept (generate, default 1)
+        fix: Auto-fix grid alignment and color types (validate)
+        dry_run: Compute layout without writing (layout)
+        output: Output path (generate; default mapas/<slug>.canvas)
+    """
+    if action == "validate":
+        args = ["canvas", "validate", path]
+        if fix:
+            args.append("--fix")
+    elif action == "layout":
+        args = ["canvas", "layout", path, algorithm]
+        if dry_run:
+            args.append("--dry-run")
+    elif action == "generate":
+        args = ["canvas", "generate", slug, "--depth", str(depth), "--layout", algorithm]
+        if output:
+            args += ["--output", output]
+    else:
+        raise ValueError(f"Unknown canvas action: {action}")
+    return _run(args, tool_name="okf_canvas",
+                params={"action": action, "path": path, "slug": slug,
+                        "algorithm": algorithm, "depth": depth,
+                        "fix": fix, "dry_run": dry_run, "output": output})
+
+
+@mcp.tool()
 def trace(query: str, layers: str = "vault,code,hooks,cron,agents") -> str:
     """Traces references to a query across all layers of the OKF ecosystem.
 

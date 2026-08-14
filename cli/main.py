@@ -229,6 +229,10 @@ def build_parser():
     sp_file_info.add_argument("--json", action="store_true", default=False,
                               help="JSON output")
 
+    # ── canvas ──
+    from cli.commands.canvas import build_subparser as build_canvas_subparser
+    build_canvas_subparser(subparsers)
+
     return parser
 
 
@@ -353,6 +357,10 @@ def main(argv=None):
 
         elif command == "file-info":
             from cli.commands.file_info import run
+            _exit = run(args, vault, config) or 0
+
+        elif command == "canvas":
+            from cli.commands.canvas import run
             _exit = run(args, vault, config) or 0
 
         else:
