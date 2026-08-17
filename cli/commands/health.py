@@ -133,21 +133,12 @@ def _check_graph(vault):
         graph = build_graph(vault)
         tag_index = build_tag_index(vault)
 
-        # Construir set de nodos leaf — se excluyen del conteo de huérfanos
-        leaf_nodes = set()
-        for f in find_md_files(vault):
-            rel = str(f.relative_to(vault))
-            # Excluir agentes y sesiones: son prompts/logs, no documentos de referencia
-            if rel.startswith("agentes/") or rel.startswith("sesiones/"):
-                leaf_nodes.add(rel)
-                continue
-            try:
-                text = f.read_text(encoding="utf-8")
-                fm, _ = parse_frontmatter(text)
-                if fm and fm.get("leaf") is True:
-                    leaf_nodes.add(rel)
-            except Exception:
-                pass
+        # Nodos leaf (frontmatter leaf: true, expuesto por build_graph) +
+        # agentes/sesiones: prompts y logs, no documentos de referencia.
+        # Antes esto re-leía y re-parseaba los 478 archivos; ahora viene
+        # del grafo ya construido.
+        leaf_nodes = {n for n, d in graph.items() if d.get("leaf")}
+        leaf_nodes |= {n for n in graph if n.startswith("agentes/") or n.startswith("sesiones/")}
 
         nodes = len(graph)
         edges = sum(len(d["out"]) for d in graph.values())
@@ -250,7 +241,12 @@ def _check_broken_links(vault):
 # ── Check 5: Scripts funcionales ──
 
 def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
-    """Smoke test: CLI commands work (via subprocess, self-contained)."""
+    """Smoke test: CLI commands work (via subprocess, self-contained).
+
+    The smoke tests are independent subprocesses, so they run in parallel
+    (serially they added ~30s of wall time to ``health``).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     cli_module = str((Path(__file__).resolve().parent.parent.parent))
 
     tests = [
@@ -265,9 +261,7 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
           "--description", "Automatic health check test.", "--dry-run"], 10),
     ]
 
-    ok, failed = 0, []
-
-    for cmd_args, timeout in tests:
+    def _run_one(cmd_args, timeout):
         name = f"cli {' '.join(cmd_args)}"
         try:
             result = subprocess.run(
@@ -278,20 +272,31 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
             )
             if result.returncode != 0:
                 if cmd_args == ["review", "--count"] and result.returncode == 1:
-                    ok += 1
-                else:
-                    err_output = (result.stderr or result.stdout).strip()
-                    err_lines = err_output.split("\n")
-                    err = "; ".join(line.strip() for line in err_lines[:5] if line.strip())
-                    if not err:
-                        err = f"exit {result.returncode}"
-                    failed.append(f"{name}: {err}")
-            else:
-                ok += 1
+                    return name, True, None
+                if cmd_args == ["validate", "--all"] and result.returncode == 1:
+                    # exit 1 = encontró archivos inválidos (su trabajo), no un fallo del CLI.
+                    return name, True, None
+                err_output = (result.stderr or result.stdout).strip()
+                err_lines = err_output.split("\n")
+                err = "; ".join(line.strip() for line in err_lines[:5] if line.strip())
+                if not err:
+                    err = f"exit {result.returncode}"
+                return name, False, f"{name}: {err}"
+            return name, True, None
         except subprocess.TimeoutExpired:
-            failed.append(f"{name}: timeout ({timeout}s)")
+            return name, False, f"{name}: timeout ({timeout}s)"
         except Exception as e:
-            failed.append(f"{name}: {str(e)[:80]}")
+            return name, False, f"{name}: {str(e)[:80]}"
+
+    ok, failed = 0, []
+    with ThreadPoolExecutor(max_workers=min(4, len(tests))) as pool:
+        futures = [pool.submit(_run_one, args, tmo) for args, tmo in tests]
+        for fut in as_completed(futures):
+            _name, _ok, _err = fut.result()
+            if _ok:
+                ok += 1
+            else:
+                failed.append(_err)
 
     return ok, failed
 
@@ -443,6 +448,10 @@ def _check_timestamp_git(vault):
     """
     ok, warnings, errors = 0, [], []
 
+    # Un solo git log batchado (antes: ~2 subprocesos por archivo ≈ 10s).
+    from cli.gitutil import build_git_dates_index
+    git_index = build_git_dates_index(vault)
+
     for f in find_md_files(vault):
         rel = str(f.relative_to(vault))
         try:
@@ -473,38 +482,29 @@ def _check_timestamp_git(vault):
 
         ts_date = ts_dt.astimezone(timezone.utc).date() if ts_dt.tzinfo else ts_dt.date()
 
-        try:
-            # Último commit (para detectar timestamps futuros)
-            result_last = subprocess.run(
-                ["git", "-C", str(vault), "log", "-1", "--format=%ai", "--", rel],
-                capture_output=True, text=True, timeout=10,
-            )
-            if result_last.returncode == 0 and result_last.stdout.strip():
-                last_dt = datetime.fromisoformat(result_last.stdout.strip())
-                last_date = last_dt.astimezone(timezone.utc).date() if last_dt.tzinfo else last_dt.date()
-                # Timestamp >1 día en el futuro respecto al último commit
-                if (ts_date - last_date).days > 1:
-                    warnings.append(
-                        f"{rel}: timestamp={ts_date} es futuro vs git last-edit={last_date}"
-                    )
-                    continue
+        entry = git_index.get(rel)
+        if entry is None:
+            ok += 1
+            continue
 
-            # Primer commit (para detectar timestamps anteriores a la existencia del archivo)
-            result_first = subprocess.run(
-                ["git", "-C", str(vault), "log", "--diff-filter=A", "--follow",
-                 "--format=%ai", "--", rel],
-                capture_output=True, text=True, timeout=10,
-            )
-            if result_first.returncode == 0 and result_first.stdout.strip():
-                first_commit = result_first.stdout.strip().split("\n")[-1]
-                first_dt = datetime.fromisoformat(first_commit)
-                first_date = first_dt.astimezone(timezone.utc).date() if first_dt.tzinfo else first_dt.date()
-                # Timestamp >30 días anterior al primer commit (probablemente inventado)
-                if (first_date - ts_date).days > 30:
-                    warnings.append(
-                        f"{rel}: timestamp={ts_date} es muy anterior a git created={first_date}"
-                    )
-                    continue
+        try:
+            last_dt = datetime.fromisoformat(entry["last"].strip())
+            last_date = last_dt.astimezone(timezone.utc).date() if last_dt.tzinfo else last_dt.date()
+            # Timestamp >1 día en el futuro respecto al último commit
+            if (ts_date - last_date).days > 1:
+                warnings.append(
+                    f"{rel}: timestamp={ts_date} es futuro vs git last-edit={last_date}"
+                )
+                continue
+
+            first_dt = datetime.fromisoformat(entry["first"].strip())
+            first_date = first_dt.astimezone(timezone.utc).date() if first_dt.tzinfo else first_dt.date()
+            # Timestamp >30 días anterior al primer commit (probablemente inventado)
+            if (first_date - ts_date).days > 30:
+                warnings.append(
+                    f"{rel}: timestamp={ts_date} es muy anterior a git created={first_date}"
+                )
+                continue
 
             ok += 1
         except Exception:

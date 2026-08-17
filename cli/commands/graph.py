@@ -37,7 +37,8 @@ def build_graph(vault, definitions=None):
 
     for f in all_files:
         relpath = str(f.relative_to(vault))
-        graph[relpath] = {"out": [], "in": [], "typed_out": [], "typed_in": []}
+        graph[relpath] = {"out": [], "in": [], "typed_out": [], "typed_in": [],
+                          "leaf": False}
 
     # ── Cache de frontmatter por archivo ──
     fm_cache = {}
@@ -47,6 +48,8 @@ def build_graph(vault, definitions=None):
             text = f.read_text(encoding="utf-8")
             fm, _ = parse_frontmatter(text)
             fm_cache[relpath] = fm if fm else {}
+            if isinstance(fm, dict) and fm.get("leaf") is True:
+                graph[relpath]["leaf"] = True
         except Exception:
             fm_cache[relpath] = {}
 
@@ -65,7 +68,7 @@ def build_graph(vault, definitions=None):
                 graph[resolved]["in"].append(relpath)
 
         # --- Aristas tipadas desde frontmatter ---
-        typed_links = extract_typed_links(f)
+        typed_links = extract_typed_links(f, fm=fm_cache[relpath])
         for tl in typed_links:
             target_raw = tl["target"]
             edge_type = tl["type"]

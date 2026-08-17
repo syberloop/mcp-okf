@@ -47,8 +47,18 @@ def days_ago(date_str, today=None):
         return None
 
 
-def git_last_commit_date(filepath, vault):
-    """Date of the last commit that touched this file. None if no commits."""
+def git_last_commit_date(filepath, vault, git_index=None):
+    """Date of the last commit that touched this file. None if no commits.
+
+    Uses the batched git index (cli.gitutil) when provided; falls back to
+    a single git log subprocess otherwise. The per-file subprocess pattern
+    cost ~3s in ``stale``; the batch reduces it to one git call total.
+    """
+    if git_index is not None:
+        entry = git_index.get(str(filepath.relative_to(vault)))
+        if entry:
+            return entry.get("last")
+        return None
     try:
         result = subprocess.run(
             ["git", "-C", str(vault), "log", "-1", "--format=%aI", "--", str(filepath.relative_to(vault))],
@@ -159,6 +169,8 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
     """Scans all concepts and evaluates staleness signals."""
     today = get_today()
     backlinks = build_backlinks_index(vault)
+    from cli.gitutil import build_git_dates_index
+    git_index = build_git_dates_index(vault)
     results = []
 
     for f in find_md_files(vault):
@@ -206,7 +218,7 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
                 signals.append("no backlinks")
 
         # ── Señal 5: sin commits ──
-        last_commit = git_last_commit_date(f, vault)
+        last_commit = git_last_commit_date(f, vault, git_index=git_index)
         if last_commit:
             commit_age = days_ago(last_commit, today)
             if commit_age is not None and commit_age > no_commits_days:

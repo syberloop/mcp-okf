@@ -13,22 +13,37 @@ WIKILINK_RE = re.compile(r'\[\[([^\]|#]+)(?:[|#][^\]]+)?\]\]')
 # Regex para markdown links [text](path.md)
 MDLINK_RE = re.compile(r'\[([^\]]*)\]\(([^)]+\.md)\)')
 
+# Caché de {nombre_archivo: relpath} por proceso (una construcción por vault).
+# El CLI ejecuta un comando por proceso; find_md_files respeta las exclusiones
+# del Config ya aplicadas, así que esto reemplaza los rglob() full-vault que
+# se disparaban por cada link no resuelto (194k scandir en graph stats).
+_NAME_INDEX_CACHE = {}
 
-def extract_links(md_path, exclude_files=None):
-    """Extracts all link targets (wikilinks + markdown) from a file.
+
+def _cached_name_index(vault):
+    """Builds (once per process) the filename → relpath index for a vault."""
+    cache_key = str(vault)
+    idx = _NAME_INDEX_CACHE.get(cache_key)
+    if idx is None:
+        from cli.vault import find_md_files
+        try:
+            all_files = find_md_files(vault)
+            idx = {f.name: str(f.relative_to(vault)) for f in all_files}
+        except Exception:
+            idx = {}
+        _NAME_INDEX_CACHE[cache_key] = idx
+    return idx
+
+
+def extract_links_from_text(text):
+    """Extracts all link targets (wikilinks + markdown) from raw file text.
 
     Args:
-        md_path: Path to .md file.
-        exclude_files: Set of filenames to exclude.
+        text: Full content of the .md file (including frontmatter).
 
     Returns:
         list[str]: List of unique targets.
     """
-    try:
-        text = md_path.read_text(encoding="utf-8")
-    except Exception:
-        return []
-
     # Quitar frontmatter y code blocks para evitar falsos positivos
     clean = text
     if clean.startswith("---"):
@@ -51,6 +66,23 @@ def extract_links(md_path, exclude_files=None):
         targets.add(target)
 
     return list(targets)
+
+
+def extract_links(md_path, exclude_files=None):
+    """Extracts all link targets (wikilinks + markdown) from a file.
+
+    Args:
+        md_path: Path to .md file.
+        exclude_files: Set of filenames to exclude.
+
+    Returns:
+        list[str]: List of unique targets.
+    """
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except Exception:
+        return []
+    return extract_links_from_text(text)
 
 
 def resolve_link(target, vault, current_dir, name_index=None):
@@ -110,13 +142,15 @@ def resolve_link(target, vault, current_dir, name_index=None):
     if candidate.exists() and candidate.name not in EXCLUDE_FILES:
         return str(candidate.relative_to(vault))
 
-    # Buscar por índice global
-    if name_index and name in name_index:
+    # Buscar por índice global (explícito o caché de proceso).
+    # Antes había un rglob() full-vault como fallback: se disparaba por cada
+    # link no resuelto (miles de escaneos recursivos → 4.6s en graph stats).
+    # El índice contiene exactamente los archivos que find_md_files considera
+    # conceptos (respeta exclusiones); un archivo fuera de él no es un target
+    # válido del grafo, así que el fallback era puro desperdicio.
+    if name_index is None:
+        name_index = _cached_name_index(vault)
+    if name in name_index:
         return name_index[name]
-
-    # Fallback: búsqueda global con rglob
-    for f in vault.rglob(name):
-        if f.name not in EXCLUDE_FILES:
-            return str(f.relative_to(vault))
 
     return None

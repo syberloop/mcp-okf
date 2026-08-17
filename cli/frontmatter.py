@@ -198,24 +198,27 @@ def increment_reads(filepath):
     return new_val
 
 
-def extract_typed_links(md_path):
+def extract_typed_links(md_path, fm=None):
     """Extracts typed edges from the 'links:' field in frontmatter.
 
     Args:
         md_path: Path to .md file.
+        fm: Optional pre-parsed frontmatter dict. If provided, skips the
+            file read + YAML parse (build_graph ya lo tiene cacheado).
 
     Returns:
         list[dict]: List of {"target": str, "type": str}.
         Empty list if there is no 'links:' field or frontmatter is malformed.
     """
-    try:
-        text = md_path.read_text(encoding="utf-8")
-    except Exception:
-        return []
-
-    fm, _ = parse_frontmatter(text)
     if fm is None:
-        return []
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except Exception:
+            return []
+
+        fm, _ = parse_frontmatter(text)
+        if fm is None:
+            return []
 
     links = fm.get("links")
     if not isinstance(links, list):

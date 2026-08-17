@@ -127,7 +127,7 @@ def _check_wikilinks_in_tables(body, rel):
     return errors
 
 
-def _check_broken_wikilinks(body, rel, vault, fm=None):
+def _check_broken_wikilinks(body, rel, vault, fm=None, name_index=None):
     """Detects wikilinks pointing to nonexistent files.
 
     Also verifies targets in the frontmatter 'links:' field if fm
@@ -139,33 +139,43 @@ def _check_broken_wikilinks(body, rel, vault, fm=None):
         vault: Path to vault root.
         fm: Parsed frontmatter (dict or None). If present and has
             'links:' field, its targets are verified.
+        name_index: Shared {filename: relpath} index (built once per run).
+            Avoids rebuilding it per file (O(n²) over the vault).
 
     Returns:
         list[str]: List of broken wikilinks found.
     """
-    from cli.wikilinks import extract_links, resolve_link
+    from cli.wikilinks import extract_links_from_text, resolve_link
+    from pathlib import Path
+
+    if name_index is None:
+        from cli.vault import find_md_files
+        try:
+            all_files = find_md_files(vault)
+            name_index = {f.name: str(f.relative_to(vault)) for f in all_files}
+        except Exception:
+            name_index = {}
 
     errors = []
-    links = extract_links(body)
+    links = extract_links_from_text(body)
 
     if links:
+        # Directorio ABSOLUTO del archivo (resolve_link espera rutas absolutas
+        # para resolver targets relativos ./ ../ contra el vault).
+        current_dir = (vault / rel).parent if rel else vault
         for target in links:
             if target.startswith(('http://', 'https://', '#')):
                 continue
-            resolved = resolve_link(target, rel, vault)
+            # Nota: resolve_link(target, vault, current_dir, name_index).
+            # Antes se llamaba con (target, rel, vault) — args intercambiados —
+            # y extract_links recibía el body como si fuera un Path, así que
+            # este check nunca llegó a ejecutarse (siempre retornaba []).
+            resolved = resolve_link(target, vault, current_dir, name_index)
             if resolved is None:
                 errors.append(f"  [[{target}]] → file not found")
 
     # Verify targets in links: from frontmatter
     if fm and isinstance(fm.get("links"), list):
-        name_index = {}
-        try:
-            from cli.vault import find_md_files
-            all_files = find_md_files(vault)
-            name_index = {f.name: str(f.relative_to(vault)) for f in all_files}
-        except Exception:
-            pass
-
         for link in fm["links"]:
             if not isinstance(link, dict):
                 continue
@@ -330,7 +340,7 @@ def _check_edge_type_consistency(filepath, vault, definitions=None):
     return errors, warnings
 
 
-def _validate_file(filepath, vault, definitions=None):
+def _validate_file(filepath, vault, definitions=None, name_index=None):
     """Validates the frontmatter and wikilinks of a .md file.
 
     Args:
@@ -338,6 +348,7 @@ def _validate_file(filepath, vault, definitions=None):
         vault: Path to vault root.
         definitions: Optional config-provided edge type definitions. If None,
                      uses the embedded defaults.
+        name_index: Shared {filename: relpath} index (built once per run).
 
     Returns:
         tuple[bool, str]: (ok, error_message). ok=True if valid.
@@ -414,7 +425,8 @@ def _validate_file(filepath, vault, definitions=None):
         all_errors.append(f"wikilinks con pipe sin escapar dentro de tabla:\n" + "\n".join(table_wl))
 
     # ── Validación 6: Links rotos ──
-    broken = _check_broken_wikilinks(body, rel, vault, fm=fm)
+    broken = _check_broken_wikilinks(body, rel, vault, fm=fm,
+                                     name_index=name_index)
     if broken:
         all_errors.append(f"wikilinks apuntan a archivos inexistentes:\n" + "\n".join(broken))
 
@@ -478,13 +490,17 @@ def run(args, vault, config=None):
 
     # Validar
     definitions = config.edge_type_definitions() if config else None
+    # Índice compartido: se construye UNA vez (antes _check_broken_wikilinks
+    # lo reconstruía por cada archivo con links: → O(n²) sobre el vault).
+    name_index = {f.name: str(f.relative_to(vault)) for f in find_md_files(vault)}
     ok_count = 0
     errors = []
 
     for f in files:
         if not f.exists():
             continue
-        is_ok, msg = _validate_file(f, vault, definitions=definitions)
+        is_ok, msg = _validate_file(f, vault, definitions=definitions,
+                                    name_index=name_index)
         if is_ok:
             ok_count += 1
         else:
