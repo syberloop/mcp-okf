@@ -64,7 +64,9 @@ def extract_links_from_text(text):
 
     # Wikilinks [[target]]
     for match in WIKILINK_RE.finditer(clean):
-        target = match.group(1).strip()
+        # rstrip('\\') : en tablas Obsidian el alias se escapa como \|, y
+        # el backslash queda pegado al target ([[x\|alias]]).
+        target = match.group(1).strip().rstrip("\\")
         targets.add(target)
 
     # Markdown links [text](target.md)
