@@ -176,7 +176,8 @@ def _get_dir_description(parent_dir, dirname):
 
 def _find_concept_dirs(vault):
     """Finds directories containing concepts or subdirectories with concepts."""
-    exclude_dirs = {".git", ".obsidian", "Templates", "scripts", "templates"}
+    from cli.vault import EXCLUDE_DIRS
+    exclude_dirs = EXCLUDE_DIRS
     concept_dirs = []
     for d in sorted(vault.rglob("*")):
         if not d.is_dir() or d.name.startswith("."):
@@ -290,7 +291,8 @@ def _generate_index(dir_path, vault):
     lines.append(f"# {title}")
     lines.append("")
 
-    exclude_dirs = {".git", ".obsidian", "Templates", "scripts", "templates"}
+    from cli.vault import EXCLUDE_DIRS
+    exclude_dirs = EXCLUDE_DIRS
     concepts = []
     for f in sorted(dir_path.iterdir()):
         if f.suffix == ".md" and f.stem not in ("index", "log"):
