@@ -148,6 +148,12 @@ def _check_broken_wikilinks(body, rel, vault, fm=None, name_index=None):
     from cli.wikilinks import extract_links_from_text, resolve_link
     from pathlib import Path
 
+    # Los logs de sesiones/ son registros auto-generados, no documentos
+    # navegables: sus wikilinks no se validan (misma política que el
+    # conteo de huérfanos en el grafo).
+    if rel.startswith("sesiones/"):
+        return []
+
     if name_index is None:
         from cli.vault import find_md_files
         try:

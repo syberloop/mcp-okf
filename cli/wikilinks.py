@@ -25,10 +25,17 @@ def _cached_name_index(vault):
     cache_key = str(vault)
     idx = _NAME_INDEX_CACHE.get(cache_key)
     if idx is None:
-        from cli.vault import find_md_files
+        from cli.vault import find_md_files, EXCLUDE_FILES, EXCLUDE_DIRS
         try:
             all_files = find_md_files(vault)
             idx = {f.name: str(f.relative_to(vault)) for f in all_files}
+            # Extender a archivos no-concepto con extensión (.canvas, .png…)
+            # para que [[Organismo-OKF.canvas]] resuelva como en Obsidian.
+            for f in vault.rglob("*"):
+                if f.is_file() and f.suffix not in ("", ".md") and f.name not in EXCLUDE_FILES:
+                    parts = f.relative_to(vault).parts
+                    if not any(p in EXCLUDE_DIRS for p in parts):
+                        idx.setdefault(f.name, str(f.relative_to(vault)))
         except Exception:
             idx = {}
         _NAME_INDEX_CACHE[cache_key] = idx
@@ -134,8 +141,11 @@ def resolve_link(target, vault, current_dir, name_index=None):
             return target
         return None
 
-    # Wikilink sin path — buscar nombre de archivo
-    name = target if target.endswith(".md") else target + ".md"
+    # Wikilink sin path — buscar nombre de archivo.
+    # Si el target ya tiene extensión (.canvas, .png…), no agregar .md.
+    if not target.endswith(".md") and not re.search(r"\.\w+$", target):
+        target += ".md"
+    name = target
 
     # Buscar en el mismo directorio primero
     candidate = current_dir / name
@@ -152,5 +162,12 @@ def resolve_link(target, vault, current_dir, name_index=None):
         name_index = _cached_name_index(vault)
     if name in name_index:
         return name_index[name]
+
+    # El índice explícito (md-only) puede no tener archivos no-concepto
+    # (.canvas, .png…): consultar también la caché de proceso, que sí los
+    # incluye. Resuelve [[Organismo-OKF.canvas]] como lo haría Obsidian.
+    cached = _cached_name_index(vault)
+    if name in cached:
+        return cached[name]
 
     return None

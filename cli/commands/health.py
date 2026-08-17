@@ -206,6 +206,8 @@ def _check_broken_links(vault):
 
     for f in all_files:
         rel = str(f.relative_to(vault))
+        if rel.startswith("sesiones/"):
+            continue  # logs auto-generados, no documentos navegables
         try:
             text = f.read_text(encoding="utf-8")
         except Exception:
