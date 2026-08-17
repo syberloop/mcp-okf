@@ -130,6 +130,12 @@ def resolve_link(target, vault, current_dir, name_index=None):
             result = str(candidate.relative_to(vault.resolve()))
             if not result.endswith(".md"):
                 result += ".md"
+            # Verificar existencia sobre la ruta final (con .md ya agregado):
+            # antes devolvía la ruta resuelta aunque el archivo no existiera
+            # (validate daba por buenos links a archivos inexistentes dentro
+            # del vault; health los marcaba).
+            if not (vault / result).exists():
+                return None
             return result
         except ValueError:
             return None
