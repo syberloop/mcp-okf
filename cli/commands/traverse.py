@@ -116,10 +116,12 @@ def _resolve_cyber_ref(ref, vault, name_index):
     if ref in name_index:
         return name_index[ref]
 
-    # Fallback: rglob
-    for f in vault.rglob(ref):
-        if f.name == ref:
-            return str(f.relative_to(vault))
+    # Fallback: índice cacheado por proceso (reemplaza el rglob full-vault
+    # que se disparaba por cada cyber ref no resuelto).
+    from cli.wikilinks import _cached_name_index
+    cached = _cached_name_index(vault)
+    if ref in cached:
+        return cached[ref]
     return None
 
 
