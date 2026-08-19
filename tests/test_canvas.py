@@ -205,6 +205,47 @@ Texto del hijo
         report = generate_canvas(self.vault, "insights/no-existe", depth=1)
         self.assertFalse(report["success"])
 
+    def test_generate_incluye_nodos_enlazados_solo_por_links_frontmatter(self):
+        """Un nodo enlazado únicamente vía `links:` (sin wikilink en el body)
+        debe expandir el BFS y aparecer en el canvas (regresión 2026-08-18)."""
+        solo = self.vault / "specs" / "solo-frontmatter.md"
+        solo.write_text("""---
+type: Spec
+title: "Solo Frontmatter"
+description: "Enlazado desde la raiz solo por links, sin wikilink"
+timestamp: 2026-01-01T00:00:00-05:00
+created: 2026-01-01T00:00:00-05:00
+---
+Texto sin wikilinks al nodo raiz.
+""")
+        # La raiz enlaza a specs/solo-frontmatter.md solo por frontmatter
+        root = self.vault / "insights" / "raiz.md"
+        root.write_text("""---
+type: Insight
+title: "Raiz"
+description: "Concepto raiz del test"
+timestamp: 2026-01-01T00:00:00-05:00
+created: 2026-01-01T00:00:00-05:00
+links:
+  - target: specs/hijo.md
+    type: refina
+  - target: specs/solo-frontmatter.md
+    type: aplica
+---
+Texto con [[specs/hijo.md]]
+""")
+        report = generate_canvas(self.vault, "insights/raiz", depth=1,
+                                 output=str(self.vault / "mapas" / "test2.canvas"))
+        self.assertTrue(report["success"])
+        data = json.loads((self.vault / "mapas" / "test2.canvas").read_text(encoding="utf-8"))
+        ids = {n["id"] for n in data["nodes"]}
+        self.assertIn("specs/solo-frontmatter", ids)
+        # La arista tipada al nodo solo-frontmatter se dibuja con su label
+        edge_targets = {(e["fromNode"], e["toNode"], e.get("label"))
+                        for e in data["edges"]}
+        self.assertIn(("insights/raiz", "specs/solo-frontmatter", "aplica"),
+                      edge_targets)
+
 
 if __name__ == "__main__":
     unittest.main()

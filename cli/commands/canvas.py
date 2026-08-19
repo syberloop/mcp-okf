@@ -793,6 +793,19 @@ def generate_canvas(vault, root_slug, depth=1, layout="auto", output=None,
                     queue.append((target, d + 1))
                 if len(visited) > max_nodes:
                     break
+            # Aristas tipadas del frontmatter (typed_out/typed_in) también
+            # expanden el BFS — un nodo enlazado SOLO por `links:` (sin
+            # wikilink en el body) debe aparecer en el mapa.
+            for te in (list(info.get("typed_out", []))
+                       + list(info.get("typed_in", []))):
+                target = te.get("target") if isinstance(te, dict) else te
+                if target not in graph:
+                    continue
+                if target not in visited:
+                    visited.add(target)
+                    queue.append((target, d + 1))
+                if len(visited) > max_nodes:
+                    break
             if len(visited) > max_nodes:
                 break
 
