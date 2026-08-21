@@ -21,6 +21,17 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Docker persistence pattern (skill multi-tenant-profile): deps installed with
+# pip --target live in a volume dir that must take precedence over both the
+# script dir (sys.path[0]) and the image venv. If OKF_PYLIBS is set, prepend it
+# BEFORE importing mcp/fastmcp, and propagate it to subprocesses via PYTHONPATH
+# (the CLI subprocess is a fresh interpreter that does not inherit sys.path).
+_pylibs = os.environ.get("OKF_PYLIBS")
+if _pylibs:
+    sys.path.insert(0, _pylibs)
+    _pp = os.environ.get("PYTHONPATH", "")
+    os.environ["PYTHONPATH"] = _pylibs + ((":" + _pp) if _pp else "")
+
 from mcp.server.fastmcp import FastMCP
 
 # Vault path configurable per instance: --vault <path> CLI arg (wins) or
@@ -36,6 +47,13 @@ if "--vault" in sys.argv:
 VAULT = Path(_vault_arg or _default_vault).expanduser()
 MCP_DIR = Path(__file__).parent
 CLI = ["python3", "-m", "cli", "--vault", str(VAULT)]
+
+# Subprocess PYTHONPATH: MCP_DIR (donde vive el paquete cli) + lo que el entorno
+# traiga (en Docker: /opt/data/pylibs con mcp 1.28.1 + yaml). Sin esta unión,
+# el subprocess pierde pylibs y falla con ModuleNotFoundError (yaml, etc.).
+_SUBPROCESS_PYTHONPATH = str(MCP_DIR) + (
+    (":" + os.environ["PYTHONPATH"]) if os.environ.get("PYTHONPATH") else ""
+)
 
 # Externalized configuration (loaded on startup)
 from cli.config import Config
@@ -234,7 +252,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
             else:
                 rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                        text=True, timeout=20,
-                                       env={**os.environ, "PYTHONPATH": str(MCP_DIR), "OKF_MCP_CALLER": "1"})
+                                       env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1"})
                 if rerun.returncode != 0:
                     return None
                 data = json.loads(rerun.stdout)
@@ -291,7 +309,7 @@ def _extract_result_edges(tool_name, args, result):
         else:
             rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                    text=True, timeout=20,
-                                   env={**os.environ, "PYTHONPATH": str(MCP_DIR), "OKF_MCP_CALLER": "1"})
+                                   env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1"})
             if rerun.returncode != 0:
                 return None
             data = json.loads(rerun.stdout)
@@ -363,7 +381,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             capture_output=True,
             text=True,
             timeout=timeout,
-            env={**os.environ, "PYTHONPATH": str(MCP_DIR), "OKF_MCP_CALLER": "1"},
+            env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1"},
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         output = result.stdout

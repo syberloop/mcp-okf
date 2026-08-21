@@ -270,7 +270,9 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
                 ["python3", "-m", "cli"] + cmd_args,
                 capture_output=True, text=True, timeout=timeout,
                 cwd=str(vault),
-                env={**os.environ, "PYTHONPATH": cli_module,
+                env={**os.environ,
+                     "PYTHONPATH": cli_module + ((":" + os.environ["PYTHONPATH"])
+                                                 if os.environ.get("PYTHONPATH") else ""),
                      "OKF_VAULT": str(vault)},
             )
             if result.returncode != 0:
