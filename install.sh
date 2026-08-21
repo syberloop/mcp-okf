@@ -360,7 +360,10 @@ if $WITH_HOOKS && ! $MODE_UPDATE; then
     if [ -f "$HOOKS_FILE" ]; then
         echo -e "  ${YELLOW}⚠${NC}  .pre-commit-config.yaml exists — skipping (idempotent)"
     else
-        cat > "$HOOKS_FILE" <<'PRECOMMIT'
+        # El vault real se inyecta en el entry: sin --vault, un vault secundario
+        # apuntaria al default (~/OKF-Vault) y el hook regeneraria el vault equivocado.
+        # (Bug destapado por el patron multi-vault, 2026-08-21.)
+        cat > "$HOOKS_FILE" <<PRECOMMIT
 # Pre-commit hooks for OKF vault
 # Validates concept integrity before every commit.
 #
@@ -373,7 +376,7 @@ repos:
       - id: okf-validate
         name: OKF Validate
         description: Validate YAML frontmatter of staged concepts
-        entry: python3 -m cli validate
+        entry: python3 -m cli --vault $VAULT validate
         language: system
         pass_filenames: false
         always_run: true
@@ -381,7 +384,7 @@ repos:
       - id: okf-index
         name: OKF Index
         description: Regenerate index.md and log.md
-        entry: python3 -m cli index
+        entry: python3 -m cli --vault $VAULT index
         language: system
         pass_filenames: false
         always_run: true
@@ -389,12 +392,12 @@ repos:
       - id: okf-health
         name: OKF Health
         description: Full vault health check (strict mode)
-        entry: python3 -m cli health --strict
+        entry: python3 -m cli --vault $VAULT health --strict
         language: system
         pass_filenames: false
         always_run: true
 PRECOMMIT
-        echo -e "  ${GREEN}✓${NC} Created $HOOKS_FILE"
+        echo -e "  ${GREEN}✓${NC} Created $HOOKS_FILE (vault: $VAULT)"
         echo ""
         echo "  To activate:"
         echo "    cd $VAULT && pre-commit install"

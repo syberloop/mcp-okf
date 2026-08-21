@@ -270,7 +270,8 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
                 ["python3", "-m", "cli"] + cmd_args,
                 capture_output=True, text=True, timeout=timeout,
                 cwd=str(vault),
-                env={**os.environ, "PYTHONPATH": cli_module},
+                env={**os.environ, "PYTHONPATH": cli_module,
+                     "OKF_VAULT": str(vault)},
             )
             if result.returncode != 0:
                 if cmd_args == ["review", "--count"] and result.returncode == 1:
@@ -579,6 +580,7 @@ def run(args, vault, config=None):
 
     # 8. Sincronización plugin↔spec
     checks_total = 7
+    plugin_ok, plugin_stale = 0, []  # init: el check 8 puede estar desactivado
     if plugin_hash_enabled:
         checks_total = 8
         plugin_ok, plugin_stale = _check_plugin_hash_sync(vault)
