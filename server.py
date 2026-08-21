@@ -23,9 +23,17 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-# Vault path configurable per instance: OKF_VAULT env var (multi-vault pattern:
-# one MCP server instance per vault, same server.py). Default: ~/OKF-Vault.
-VAULT = Path(os.environ.get("OKF_VAULT", str(Path.home() / "OKF-Vault"))).expanduser()
+# Vault path configurable per instance: --vault <path> CLI arg (wins) or
+# OKF_VAULT env var (multi-vault pattern: one MCP server instance per vault,
+# same server.py). Default: ~/OKF-Vault.
+_default_vault = os.environ.get("OKF_VAULT", str(Path.home() / "OKF-Vault"))
+_vault_arg = None
+if "--vault" in sys.argv:
+    try:
+        _vault_arg = sys.argv[sys.argv.index("--vault") + 1]
+    except IndexError:
+        pass
+VAULT = Path(_vault_arg or _default_vault).expanduser()
 MCP_DIR = Path(__file__).parent
 CLI = ["python3", "-m", "cli", "--vault", str(VAULT)]
 
