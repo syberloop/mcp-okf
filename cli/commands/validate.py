@@ -148,9 +148,9 @@ def _check_broken_wikilinks(body, rel, vault, fm=None, name_index=None):
     from cli.wikilinks import extract_links_from_text, resolve_link
     from pathlib import Path
 
-    # Los logs de sesiones/ son registros auto-generados, no documentos
-    # navegables: sus wikilinks no se validan (misma política que el
-    # conteo de huérfanos en el grafo).
+    # Logs in sesiones/ are auto-generated records, not navigable
+    # documents: their wikilinks are not validated (same policy as the
+    # orphan count in the graph).
     if rel.startswith("sesiones/"):
         return []
 
@@ -166,16 +166,16 @@ def _check_broken_wikilinks(body, rel, vault, fm=None, name_index=None):
     links = extract_links_from_text(body)
 
     if links:
-        # Directorio ABSOLUTO del archivo (resolve_link espera rutas absolutas
-        # para resolver targets relativos ./ ../ contra el vault).
+        # ABSOLUTE directory of the file (resolve_link expects absolute paths
+        # to resolve relative ./ ../ targets against the vault).
         current_dir = (vault / rel).parent if rel else vault
         for target in links:
             if target.startswith(('http://', 'https://', '#')):
                 continue
-            # Nota: resolve_link(target, vault, current_dir, name_index).
-            # Antes se llamaba con (target, rel, vault) — args intercambiados —
-            # y extract_links recibía el body como si fuera un Path, así que
-            # este check nunca llegó a ejecutarse (siempre retornaba []).
+            # Note: resolve_link(target, vault, current_dir, name_index).
+            # It used to be called with (target, rel, vault) — swapped args —
+            # and extract_links received the body as if it were a Path, so
+            # this check never ran (always returned []).
             resolved = resolve_link(target, vault, current_dir, name_index)
             if resolved is None:
                 errors.append(f"  [[{target}]] → file not found")
@@ -386,7 +386,7 @@ def _validate_file(filepath, vault, definitions=None, name_index=None):
 
     all_errors = []
 
-    # ── Validación 1: YAML estricto ──
+    # ── Validation 1: strict YAML ──
     try:
         import yaml
         fm = yaml.safe_load(fm_text)
@@ -402,48 +402,48 @@ def _validate_file(filepath, vault, definitions=None, name_index=None):
     if not isinstance(fm, dict):
         return False, f"{rel}: frontmatter is not a valid YAML dict"
 
-    # ── Validación 2: Campos obligatorios ──
+    # ── Validation 2: required fields ──
     if not fm.get("type"):
-        all_errors.append("falta 'type'")
+        all_errors.append("missing 'type'")
     desc = fm.get("description")
     if not desc or not str(desc).strip():
-        all_errors.append("falta 'description'")
+        all_errors.append("missing 'description'")
     # timestamp: obligatorio excepto en sesiones/ (auto-generadas)
     # y skills/ (skills de Hermes, no conceptos OKF)
     if not rel.startswith("sesiones/") and not rel.startswith("skills/"):
         ts = fm.get("timestamp")
         if not ts or not str(ts).strip():
-            all_errors.append("falta 'timestamp'")
+            all_errors.append("missing 'timestamp'")
 
-    # ── Validación 3: Wikilinks en backticks ──
+    # ── Validation 3: wikilinks in backticks ──
     wl_errors = _check_wikilinks_in_backticks(body, rel)
     if wl_errors:
-        all_errors.append(f"wikilinks en backticks (Obsidian no los muestra como enlaces):\n" + "\n".join(wl_errors))
+        all_errors.append(f"wikilinks in backticks (Obsidian doesn't render them as links):\n" + "\n".join(wl_errors))
 
-    # ── Validación 4: Wikilinks malformados ──
+    # ── Validation 4: malformed wikilinks ──
     malformed = _check_malformed_wikilinks(body, rel)
     if malformed:
         all_errors.append(f"syntactically incomplete wikilinks (missing closing ]]):\n" + "\n".join(malformed))
 
-    # ── Validación 5: Wikilinks con alias en tablas ──
+    # ── Validation 5: wikilinks with alias in tables ──
     table_wl = _check_wikilinks_in_tables(body, rel)
     if table_wl:
-        all_errors.append(f"wikilinks con pipe sin escapar dentro de tabla:\n" + "\n".join(table_wl))
+        all_errors.append(f"wikilinks with unescaped pipe inside table:\n" + "\n".join(table_wl))
 
-    # ── Validación 6: Links rotos ──
+    # ── Validation 6: broken links ──
     broken = _check_broken_wikilinks(body, rel, vault, fm=fm,
                                      name_index=name_index)
     if broken:
-        all_errors.append(f"wikilinks apuntan a archivos inexistentes:\n" + "\n".join(broken))
+        all_errors.append(f"wikilinks pointing to nonexistent files:\n" + "\n".join(broken))
 
-    # ── Validación 7: Consistencia de aristas tipadas ──
+    # ── Validation 7: typed edge consistency ──
     edge_errors, edge_warnings = _check_edge_type_consistency(
         filepath, vault, definitions=definitions)
     if edge_errors:
-        all_errors.append(f"inconsistencias en links tipados:\n" + "\n".join(edge_errors))
+        all_errors.append(f"inconsistencies in typed links:\n" + "\n".join(edge_errors))
     if edge_warnings:
-        # Warnings no bloqueantes (plan scoring-semantico: par atípico
-        # priorizado por score) — se reportan a stderr sin abortar.
+        # Non-blocking warnings (semantic-scoring plan: atypical pair
+        # prioritized by score) — reported to stderr without aborting.
         print(f"⚠️  {rel}:", file=sys.stderr)
         for w in edge_warnings:
             print(w, file=sys.stderr)
@@ -463,12 +463,12 @@ def run(args, vault, config=None):
         print(f"Error: vault not found at {vault}", file=sys.stderr)
         return 1
 
-    # Determinar qué archivos validar
+    # Determine which files to validate
     if target:
-        # Archivo específico
+        # Specific file
         filepath = vault / target
         if not filepath.exists():
-            # Buscar por nombre
+            # Search by name
             for f in vault.rglob("*.md"):
                 if f.name == target or target in str(f.relative_to(vault)):
                     filepath = f
@@ -480,7 +480,7 @@ def run(args, vault, config=None):
     elif validate_all:
         files = find_md_files(vault)
     else:
-        # Por defecto: archivos .md staged en git
+        # Default: .md files staged in git
         import subprocess
         result = subprocess.run(
             ["git", "-C", str(vault), "diff", "--cached", "--name-only",
@@ -494,10 +494,10 @@ def run(args, vault, config=None):
             print("✓ No .md files staged for validation.")
             return 0
 
-    # Validar
+    # Validate
     definitions = config.edge_type_definitions() if config else None
-    # Índice compartido: se construye UNA vez (antes _check_broken_wikilinks
-    # lo reconstruía por cada archivo con links: → O(n²) sobre el vault).
+    # Shared index: built ONCE (previously _check_broken_wikilinks rebuilt
+    # it per file with links: → O(n²) over the vault).
     name_index = {f.name: str(f.relative_to(vault)) for f in find_md_files(vault)}
     ok_count = 0
     errors = []
@@ -519,7 +519,7 @@ def run(args, vault, config=None):
             print(f"   {e}", file=sys.stderr)
         print(f"\n✅ {ok_count} valid, ❌ {len(errors)} invalid",
               file=sys.stderr)
-        print("\nCommit abortado. Corrige los errores e intenta de nuevo.",
+        print("\nCommit aborted. Fix the errors and try again.",
               file=sys.stderr)
         return 1
 
