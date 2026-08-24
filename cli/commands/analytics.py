@@ -61,10 +61,11 @@ def _resolve_db_path(config) -> Path:
 def _get_session_id() -> str:
     """Attempts to infer the current session_id from the environment."""
     import os
-    sid = os.environ.get("OKF_SESSION_ID", "")
-    if not sid:
-        sid = os.environ.get("CLAUDE_SESSION_ID", "")
-    return sid
+    for _var in ("OKF_SESSION_ID", "DSH_SESSION_ID", "CLAUDE_SESSION_ID"):
+        sid = os.environ.get(_var, "")
+        if sid:
+            return sid
+    return ""
 
 
 # ── Query handlers ──

@@ -73,6 +73,8 @@ def _get_session_id() -> str:
         return _session_id
     sid = os.environ.get("OKF_SESSION_ID", "")
     if not sid:
+        sid = os.environ.get("DSH_SESSION_ID", "")
+    if not sid:
         sid = os.environ.get("HERMES_SESSION_ID", "")
     if not sid:
         sid = os.environ.get("CLAUDE_SESSION_ID", "")

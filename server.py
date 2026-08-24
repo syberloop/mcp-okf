@@ -93,10 +93,11 @@ mcp = FastMCP("cli")
 # ── Persistencia Cognitive Trace ────────────────────────────────────────────
 
 def _get_session_id() -> str:
-    """Returns the Hermes session_id or generates a local one."""
-    sid = os.environ.get("HERMES_SESSION_ID", "")
-    if sid:
-        return sid
+    """Returns the harness session_id (OKF/DSH/Hermes) or generates a local one."""
+    for _var in ("OKF_SESSION_ID", "DSH_SESSION_ID", "HERMES_SESSION_ID"):
+        _sid = os.environ.get(_var, "")
+        if _sid:
+            return _sid
     # Fallback: try reading from state file
     state_file = Path.home() / ".hermes" / "session_state.json"
     if state_file.exists():
@@ -121,6 +122,7 @@ def _init_db() -> None:
                 ts TEXT NOT NULL,
                 tool TEXT NOT NULL,
                 params TEXT NOT NULL DEFAULT '{}',
+                result_edges TEXT,
                 nodes_count INTEGER,
                 exit_code INTEGER,
                 error TEXT,
@@ -172,10 +174,17 @@ def _init_db() -> None:
             GROUP BY node
             ORDER BY visits DESC;
         """)
+        # Migración idempotente: tablas creadas antes de result_edges
+        try:
+            conn.execute("ALTER TABLE events ADD COLUMN result_edges TEXT")
+        except Exception as e:
+            if "duplicate column" not in str(e).lower():
+                print(f"[server] ALTER TABLE result_edges failed: {e}", file=sys.stderr)
 
 
 def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedProcess",
-                   duration_ms: int, nodes_count: int | None = None) -> None:
+                   duration_ms: int, nodes_count: int | None = None,
+                   result_edges: list | None = None) -> None:
     """Escribe el evento a SQLite."""
     if DB_PATH is None:
         return  # Cognitive Trace desactivado
@@ -187,13 +196,14 @@ def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedPr
         with sqlite3.connect(str(DB_PATH)) as conn:
             conn.execute(
                 """INSERT INTO events
-                   (session_id, ts, tool, params, nodes_count, exit_code, error, duration_ms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (session_id, ts, tool, params, result_edges, nodes_count, exit_code, error, duration_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _get_session_id(),
                     datetime.now(timezone.utc).isoformat(),
                     tool_name,
                     json.dumps(params, ensure_ascii=False),
+                    json.dumps(result_edges, ensure_ascii=False) if result_edges else None,
                     nodes_count,
                     exit_code,
                     error,
@@ -252,7 +262,8 @@ def _extract_result_nodes(tool_name: str, args: list[str],
             else:
                 rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                        text=True, timeout=20,
-                                       env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1"})
+                                       env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1",
+                 "OKF_SESSION_ID": _get_session_id()})
                 if rerun.returncode != 0:
                     return None
                 data = json.loads(rerun.stdout)
@@ -309,7 +320,8 @@ def _extract_result_edges(tool_name, args, result):
         else:
             rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                    text=True, timeout=20,
-                                   env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1"})
+                                   env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1",
+                 "OKF_SESSION_ID": _get_session_id()})
             if rerun.returncode != 0:
                 return None
             data = json.loads(rerun.stdout)
@@ -347,8 +359,10 @@ def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedPro
         if created_path:
             params = {**params, "created_path": created_path}
     nodes = _extract_result_nodes(tool_name, args, result)
+    edges = _extract_result_edges(tool_name, args, result)
     _persist_event(tool_name, params, result, duration_ms,
-                   nodes_count=len(nodes) if nodes else None)
+                   nodes_count=len(nodes) if nodes else None,
+                   result_edges=edges)
     event = {
         "type": "tool",
         "session": _get_session_id(),
@@ -360,7 +374,6 @@ def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedPro
     }
     if nodes:
         event["result_nodes"] = nodes
-    edges = _extract_result_edges(tool_name, args, result)
     if edges:
         event["result_edges"] = edges
     _append_jsonl(event)
@@ -381,7 +394,8 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             capture_output=True,
             text=True,
             timeout=timeout,
-            env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1"},
+            env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1",
+                 "OKF_SESSION_ID": _get_session_id()},
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         output = result.stdout
