@@ -42,6 +42,7 @@ EDGE_TYPE_DEFINITIONS = {
             ("Decision", "Spec"),
             ("Insight", "Insight"),
             ("Criterio", "Criterio"),
+            ("Criterio", "Decision"),  # un criterio precisa la regla de la decisión que lo originó
             ("Spec", "Spec"),
             ("LeccionAprendida", "Insight"),  # una lección precisa el diagnóstico que la origina
         ],
