@@ -324,19 +324,28 @@ def _query_edge_type_usage(conn, limit, definitions=None):
     (2026-07-29): ≥50% of traverses with ontological ambiguity must include
     edge_type. Automatic proxy: traverses whose params contain non-empty edge_type.
     """
+    # Ventana post-fix: el 2026-08-01 edge_type pasó a anotación obligatoria
+    # (decisión cada-traverse-es-una-busqueda-ontologica). Medir la generación
+    # actual evita que el histórico pre-fix (0% por construcción) diluya P1.
+    POST_FIX_DATE = "2026-08-01"
     total = conn.execute(
         "SELECT COUNT(*) FROM events WHERE tool IN ('okf_traverse', 'traverse')"
+        " AND date(ts) >= ?",
+        (POST_FIX_DATE,),
     ).fetchone()[0]
     typed = conn.execute(
         """SELECT COUNT(*) FROM events
            WHERE tool IN ('okf_traverse', 'traverse')
-             AND COALESCE(json_extract(params, '$.edge_type'), '') != ''"""
+             AND date(ts) >= ?
+             AND COALESCE(json_extract(params, '$.edge_type'), '') != ''""",
+        (POST_FIX_DATE,),
     ).fetchone()[0]
     if not total:
         return "(no data — no traverses recorded yet)"
     pct = typed / total * 100
     lines = [
-        f"Ontological traverse usage: {typed}/{total} with edge_type ({pct:.0f}%)",
+        f"Ontological traverse usage: {typed}/{total} with edge_type ({pct:.0f}%) "
+        f"— since {POST_FIX_DATE} (post-fix generation)",
         f"  Decision criterion (>=50%): {'MET' if pct >= 50 else 'NOT MET'}",
     ]
     rows = conn.execute(
@@ -356,8 +365,10 @@ def _query_edge_type_usage(conn, limit, definitions=None):
         """SELECT json_extract(params, '$.edge_type') as et, COUNT(*) as cnt
            FROM events
            WHERE tool IN ('okf_traverse', 'traverse')
+             AND date(ts) >= ?
              AND COALESCE(json_extract(params, '$.edge_type'), '') != ''
-           GROUP BY et ORDER BY cnt DESC"""
+           GROUP BY et ORDER BY cnt DESC""",
+        (POST_FIX_DATE,),
     ).fetchall()
     if ets:
         lines.append("Types used:")

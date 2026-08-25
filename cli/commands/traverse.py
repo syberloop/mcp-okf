@@ -327,6 +327,19 @@ def run(args, vault, config=None):
         print()
         print(f"   🎯 Annotation: {edge_type_filter} — {len(matched)}/{edges_total} "
               f"edges of the declared type (full superset preserved)")
+        # Contexto del vecindario: tipos dominantes (calibra la anotación contra
+        # el anclaje de mostrar el tipo declarado primero — P2-2 del backlog).
+        _type_counts: dict = {}
+        for _n in nodes:
+            if _n["from"] is not None:
+                _t = _n["edge_type"] or "?"
+                _type_counts[_t] = _type_counts.get(_t, 0) + 1
+        _dominant = ", ".join(
+            f"{t} ({c})" for t, c in sorted(_type_counts.items(), key=lambda kv: -kv[1])[:4]
+        )
+        _decl_pct = (len(matched) / edges_total * 100) if edges_total else 0
+        print(f"   📊 Neighborhood: {_dominant} — declared {edge_type_filter} "
+              f"= {_decl_pct:.0f}% of {edges_total} edges")
     elif not edge_type_filter:
         # ── Sugerencia ontológica (Nivel 2): si no se usó edge_type, sugerir ──
         typed_edge_types = {n["edge_type"] for n in nodes
