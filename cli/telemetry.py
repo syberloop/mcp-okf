@@ -17,6 +17,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from cli.config import resolve_vault_path
+
 # ── Global state ──
 
 _db_path: Path | None = None
@@ -52,12 +54,12 @@ def init(vault: Path, config=None) -> None:
         trace_jsonl = None
 
     if trace_db:
-        _db_path = Path(trace_db).expanduser()
+        _db_path = resolve_vault_path(trace_db, vault)
     else:
         _db_path = Path.home() / ".hermes" / "cognitive-trace.db"
 
     if trace_jsonl:
-        _jsonl_path = Path(trace_jsonl).expanduser()
+        _jsonl_path = resolve_vault_path(trace_jsonl, vault)
         _jsonl_dir = _jsonl_path.parent
     else:
         _jsonl_dir = vault / ".obsidian" / "plugins" / "cognitive-trace"

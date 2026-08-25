@@ -19,6 +19,13 @@ from typing import Any
 from cli.edge_types import EDGE_TYPE_DEFINITIONS
 
 
+def resolve_vault_path(value, vault):
+    """Resuelve un path de features contra el vault: absoluto se usa tal cual,
+    relativo se resuelve contra <vault> (configs portables, clonables)."""
+    p = Path(str(value)).expanduser()
+    return p if p.is_absolute() else Path(vault) / p
+
+
 # ── Defaults embebidos ──────────────────────────────────────────────────────
 # Réplica exacta de los hardcodeos actuales. Si no existe .okf.config.yaml,
 # el comportamiento es idéntico al actual para Jaime.

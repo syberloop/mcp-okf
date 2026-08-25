@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from cli.edge_types import VALID_EDGE_TYPES
+from cli.config import resolve_vault_path
 
 
 def _edge_types_sql(definitions=None) -> str:
@@ -49,12 +50,12 @@ def _edge_types_sql(definitions=None) -> str:
 
 # ── Helpers ──
 
-def _resolve_db_path(config) -> Path:
+def _resolve_db_path(config, vault) -> Path:
     """Resolves the path to the Cognitive Trace DB from config or default."""
     if config:
         db_path = config._data.get("features", {}).get("trace_db_path")
         if db_path:
-            return Path(db_path).expanduser()
+            return resolve_vault_path(db_path, vault)
     return Path.home() / ".hermes" / "cognitive-trace.db"
 
 
@@ -497,7 +498,7 @@ def run(args, vault, config=None):
         vault: Path to the vault
         config: Loaded config (optional)
     """
-    db_path = _resolve_db_path(config)
+    db_path = _resolve_db_path(config, vault)
 
     if not db_path.exists():
         print(f"[error] Database not found: {db_path}", file=sys.stderr)

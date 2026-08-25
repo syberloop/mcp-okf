@@ -56,7 +56,7 @@ _SUBPROCESS_PYTHONPATH = str(MCP_DIR) + (
 )
 
 # Externalized configuration (loaded on startup)
-from cli.config import Config
+from cli.config import Config, resolve_vault_path
 _config = Config(VAULT)
 # Inyectar exclusiones en vault.py
 from cli.vault import apply_config
@@ -68,12 +68,12 @@ if _config.features_cognitive_trace:
     trace_jsonl = _config._data["features"].get("trace_jsonl_path")
 
     if trace_db:
-        DB_PATH = Path(trace_db).expanduser()
+        DB_PATH = resolve_vault_path(trace_db, VAULT)
     else:
         DB_PATH = Path.home() / ".hermes" / "cognitive-trace.db"
 
     if trace_jsonl:
-        JSONL_PATH = Path(trace_jsonl).expanduser()
+        JSONL_PATH = resolve_vault_path(trace_jsonl, VAULT)
         JSONL_DIR = JSONL_PATH.parent
     else:
         JSONL_DIR = VAULT / ".obsidian" / "plugins" / "cognitive-trace"
