@@ -118,7 +118,7 @@ class TestNewEdgeTypeFromConfig(unittest.TestCase):
                 "conecta": {
                     "description": "A conecta B en la red de conocimiento",
                     "transitive": False,
-                    "valid_pairs": [["Insight", "Plan"]],
+                    "valid_pairs": [["Sesion", "Insight"]],
                 },
             },
         })
@@ -133,17 +133,17 @@ class TestNewEdgeTypeFromConfig(unittest.TestCase):
         self.assertIn("conecta", defs)
         self.assertEqual(defs["conecta"]["description"],
                          "A conecta B en la red de conocimiento")
-        self.assertEqual(defs["conecta"]["valid_pairs"], [("Insight", "Plan")])
+        self.assertEqual(defs["conecta"]["valid_pairs"], [("Sesion", "Insight")])
 
     def test_new_edge_type_validates(self):
         defs = self.config.edge_type_definitions()
         warnings = validate_cross_type_pair(
-            "Insight", "Plan", "conecta", definitions=defs)
+            "Sesion", "Insight", "conecta", definitions=defs)
         self.assertEqual(warnings, [])
 
     def test_new_edge_type_suggested(self):
         defs = self.config.edge_type_definitions()
-        etype, conf = suggest_edge_type("Insight", "Plan", definitions=defs)
+        etype, conf = suggest_edge_type("Sesion", "Insight", definitions=defs)
         self.assertEqual(etype, "conecta")
         self.assertEqual(conf, "ALTA")
 
