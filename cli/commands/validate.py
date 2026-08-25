@@ -287,7 +287,7 @@ def _check_edge_type_consistency(filepath, vault, definitions=None):
                             isinstance(cyber, dict)
                             and bool(cyber.get("corrected_by"))
                         )
-                        if "deprec" not in status.lower() and not has_cb:
+                        if "deprec" not in status.lower() and "superced" not in status.lower() and not has_cb:
                             errors.append(
                                 f"  links: {rel} corrects '{target}' but the "
                                 f"target is not deprecated (status='{status}')"
@@ -436,6 +436,14 @@ def _validate_file(filepath, vault, definitions=None, name_index=None):
     if broken:
         all_errors.append(f"wikilinks pointing to nonexistent files:\n" + "\n".join(broken))
 
+    # ── Validation 8: apoptosis — supercedida exige replaced_by ──
+    if str(fm.get("status", "")).strip().lower() == "supercedida":
+        rb = fm.get("replaced_by")
+        if not rb or not str(rb).strip():
+            all_errors.append(
+                "status: supercedida sin 'replaced_by' (protocolo de apoptosis: "
+                "criterios/protocolo-de-apoptosis-muerte-de-conceptos-en-el-vault-okf)")
+
     # ── Validation 7: typed edge consistency ──
     edge_errors, edge_warnings = _check_edge_type_consistency(
         filepath, vault, definitions=definitions)
@@ -452,6 +460,62 @@ def _validate_file(filepath, vault, definitions=None, name_index=None):
         return False, f"{rel}: " + "; ".join(all_errors)
 
     return True, ""
+
+
+def _check_superseded_corrige(vault):
+    """Validation 9 (grafo): toda entidad con status: supercedida debe tener
+    una arista tipada 'corrige' entrante declarada por su reemplazo.
+
+    Implementa la memoria de errores tipada del grafo (P1-2 del backlog de
+    instrumentación ontológica): el protocolo de apoptosis marca la muerte con
+    replaced_by (wikilink), y la arista corrige la hace machine-readable para
+    graph_impact/analytics. El reemplazo declara:
+        links:
+          - target: <predecesor.md>
+            type: corrige
+    """
+    import yaml
+    errors = []
+    superseded: list[str] = []
+    corrige_targets: set[str] = set()
+    for f in find_md_files(vault):
+        if f.name in EXCLUDE_FILES or f.name == "Untitled.md":
+            continue
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if not text.startswith("---"):
+            continue
+        end = text.find("\n---\n", 3)
+        if end == -1:
+            end = text.find("\n---", 3)
+        if end == -1:
+            continue
+        rel = str(f.relative_to(vault))
+        try:
+            fm = yaml.safe_load(text[3:end])
+        except Exception:
+            continue
+        if not isinstance(fm, dict):
+            continue
+        if str(fm.get("status", "")).strip().lower() == "supercedida":
+            superseded.append(rel)
+        links = fm.get("links") or []
+        if not isinstance(links, list):
+            continue
+        for link in links:
+            if isinstance(link, dict) and link.get("type") == "corrige":
+                t = str(link.get("target", "")).strip()
+                if t and not t.endswith(".md"):
+                    t += ".md"
+                corrige_targets.add(t)
+    for rel in superseded:
+        if rel not in corrige_targets:
+            errors.append(
+                f"{rel}: status supercedida sin arista 'corrige' entrante "
+                "(el reemplazo debe declarar links: [{target: <este>, type: corrige}])")
+    return errors
 
 
 def run(args, vault, config=None):
@@ -511,6 +575,9 @@ def run(args, vault, config=None):
             ok_count += 1
         else:
             errors.append(msg)
+
+    # ── Validation 9 (grafo): supercedidas exigen arista corrige entrante ──
+    errors.extend(_check_superseded_corrige(vault))
 
     # Reporte
     if errors:

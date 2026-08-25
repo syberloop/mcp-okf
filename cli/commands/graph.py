@@ -841,7 +841,8 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
 
             # Cyber override: si source tiene cyber.corrects → target,
             # sugiere 'refina' (corrige/mejora sin reemplazar).
-            # 'corrige' se reserva para cuando el target está explícitamente deprecado.
+            # 'corrige' se reserva para cuando el target está explícitamente
+            # deprecado o supercedido (apoptosis).
             if source_fm and isinstance(source_fm.get("cyber"), dict):
                 corrects = source_fm["cyber"].get("corrects", [])
                 if isinstance(corrects, str):
@@ -860,7 +861,7 @@ def _cmd_suggest_edge_types(vault, graph, apply=False, dry_run=False,
                             if t_fm:
                                 t_status = str(t_fm.get("status", ""))
                                 t_cyber = t_fm.get("cyber")
-                                if "deprec" in t_status.lower():
+                                if "deprec" in t_status.lower() or "superced" in t_status.lower():
                                     is_deprecated = True
                                 if isinstance(t_cyber, dict) and t_cyber.get("corrected_by"):
                                     is_deprecated = True

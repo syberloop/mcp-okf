@@ -1,5 +1,6 @@
 """Command read — Read a concept from the vault + auto-increment reads counter."""
 
+import os
 import sys
 from pathlib import Path
 from cli.frontmatter import increment_reads
@@ -41,6 +42,7 @@ def run(args, vault, config=None):
     offset = getattr(args, "offset", 1)
     limit = getattr(args, "limit", 500)
     no_touch = getattr(args, "no_touch", False)
+    test_session = os.environ.get("OKF_SESSION_PURPOSE", "").strip().lower() == "test"
 
     filepath = _find_file(target, vault)
     if filepath is None:
@@ -49,13 +51,14 @@ def run(args, vault, config=None):
 
     rel = filepath.relative_to(vault)
 
-    # Touch (incrementar reads)
-    if not no_touch:
+    # Touch (incrementar reads) — sesiones de test no contaminan la telemetría
+    if not no_touch and not test_session:
         new_val = increment_reads(filepath)
         if new_val:
             print(f"📖 {rel}  (reads: {new_val})", file=sys.stderr)
     else:
-        print(f"📖 {rel}  (no touch)", file=sys.stderr)
+        label = "no touch" if no_touch else "test session — no touch"
+        print(f"📖 {rel}  ({label})", file=sys.stderr)
 
     # Imprimir contenido
     print(f"─── {rel} ({filepath.stat().st_size} bytes) ───", file=sys.stderr)

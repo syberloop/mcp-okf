@@ -332,6 +332,12 @@ def record(tool_name: str, params: dict, exit_code: int,
     if os.environ.get("OKF_MCP_CALLER") == "1":
         return
 
+    # Marcador de sesión de test: no contamina las agregaciones de atención
+    purpose = os.environ.get("OKF_SESSION_PURPOSE", "").strip()
+    if purpose:
+        params = dict(params)
+        params["_purpose"] = purpose
+
     error = None
     if exit_code != 0 and stderr:
         error = stderr[:500]
