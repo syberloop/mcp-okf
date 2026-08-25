@@ -55,6 +55,7 @@ EDGE_TYPE_DEFINITIONS = {
             ("MarcoTeorico", "Spec"),
             ("Research", "Plan"),
             ("Research", "Decision"),
+            ("Insight", "Plan"),  # un diagnóstico fundamenta el plan que lo atiende (P3-2)
         ],
     },
     "aplica": {

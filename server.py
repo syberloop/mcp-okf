@@ -92,6 +92,15 @@ mcp = FastMCP("cli")
 
 # ── Persistencia Cognitive Trace ────────────────────────────────────────────
 
+def _get_prompt_id() -> str:
+    """Returns the client turn/prompt id from the environment (P3-1)."""
+    for _var in ("OKF_PROMPT_ID", "DSH_PROMPT_ID", "HERMES_PROMPT_ID"):
+        _pid = os.environ.get(_var, "")
+        if _pid:
+            return _pid
+    return ""
+
+
 def _get_session_id() -> str:
     """Returns the harness session_id (OKF/DSH/Hermes) or generates a local one."""
     for _var in ("OKF_SESSION_ID", "DSH_SESSION_ID", "HERMES_SESSION_ID"):
@@ -123,6 +132,7 @@ def _init_db() -> None:
                 tool TEXT NOT NULL,
                 params TEXT NOT NULL DEFAULT '{}',
                 result_edges TEXT,
+                prompt_id TEXT,
                 nodes_count INTEGER,
                 exit_code INTEGER,
                 error TEXT,
@@ -180,6 +190,11 @@ def _init_db() -> None:
         except Exception as e:
             if "duplicate column" not in str(e).lower():
                 print(f"[server] ALTER TABLE result_edges failed: {e}", file=sys.stderr)
+        try:
+            conn.execute("ALTER TABLE events ADD COLUMN prompt_id TEXT")
+        except Exception as e:
+            if "duplicate column" not in str(e).lower():
+                print(f"[server] ALTER TABLE prompt_id failed: {e}", file=sys.stderr)
 
 
 def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedProcess",
@@ -196,14 +211,15 @@ def _persist_event(tool_name: str, params: dict, result: "subprocess.CompletedPr
         with sqlite3.connect(str(DB_PATH)) as conn:
             conn.execute(
                 """INSERT INTO events
-                   (session_id, ts, tool, params, result_edges, nodes_count, exit_code, error, duration_ms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (session_id, ts, tool, params, result_edges, prompt_id, nodes_count, exit_code, error, duration_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _get_session_id(),
                     datetime.now(timezone.utc).isoformat(),
                     tool_name,
                     json.dumps(params, ensure_ascii=False),
                     json.dumps(result_edges, ensure_ascii=False) if result_edges else None,
+                    _get_prompt_id() or None,
                     nodes_count,
                     exit_code,
                     error,
@@ -376,6 +392,9 @@ def _finish_event(tool_name: str, params: dict, result: "subprocess.CompletedPro
         event["result_nodes"] = nodes
     if edges:
         event["result_edges"] = edges
+    _pid = _get_prompt_id()
+    if _pid:
+        event["prompt_id"] = _pid
     _append_jsonl(event)
 
 

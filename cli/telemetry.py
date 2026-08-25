@@ -66,6 +66,19 @@ def init(vault: Path, config=None) -> None:
     _ensure_db()
 
 
+def _get_prompt_id() -> str:
+    """Returns the client turn/prompt id from the environment (P3-1).
+
+    El límite de turno real lo conoce el cliente (Hermes/DSH); el heurístico
+    de gap de 60s de analytics es solo un fallback. Opt-in por env.
+    """
+    for _var in ("OKF_PROMPT_ID", "DSH_PROMPT_ID", "HERMES_PROMPT_ID"):
+        _pid = os.environ.get(_var, "")
+        if _pid:
+            return _pid
+    return ""
+
+
 def _get_session_id() -> str:
     """Returns the session_id from the environment or generates a local one."""
     global _session_id
@@ -99,6 +112,7 @@ def _ensure_db() -> None:
                     tool TEXT NOT NULL,
                     params TEXT NOT NULL DEFAULT '{}',
                     result_edges TEXT,
+                    prompt_id TEXT,
                     nodes_count INTEGER,
                     exit_code INTEGER,
                     error TEXT,
@@ -147,6 +161,11 @@ def _ensure_db() -> None:
             # sin romper el CLI (el telemetry nunca debe interrumpir una tool call)
             if "duplicate column" not in str(e).lower():
                 print(f"[telemetry] ALTER TABLE result_edges failed: {e}", file=sys.stderr)
+        try:
+            conn.execute("ALTER TABLE events ADD COLUMN prompt_id TEXT")
+        except Exception as e:
+            if "duplicate column" not in str(e).lower():
+                print(f"[telemetry] ALTER TABLE prompt_id failed: {e}", file=sys.stderr)
     except Exception:
         pass
 
@@ -161,14 +180,15 @@ def _persist_sqlite(tool_name: str, params: dict, exit_code: int,
         with sqlite3.connect(str(_db_path)) as conn:
             conn.execute(
                 """INSERT INTO events
-                   (session_id, ts, tool, params, result_edges, nodes_count, exit_code, error, duration_ms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (session_id, ts, tool, params, result_edges, prompt_id, nodes_count, exit_code, error, duration_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _get_session_id(),
                     datetime.now(timezone.utc).isoformat(),
                     tool_name,
                     json.dumps(params, ensure_ascii=False),
                     json.dumps(result_edges, ensure_ascii=False) if result_edges else None,
+                    _get_prompt_id() or None,
                     nodes_count,
                     exit_code,
                     error,
@@ -368,6 +388,9 @@ def record(tool_name: str, params: dict, exit_code: int,
         event["result_nodes"] = nodes
     if edges:
         event["result_edges"] = edges
+    _pid = _get_prompt_id()
+    if _pid:
+        event["prompt_id"] = _pid
 
     _append_jsonl(event)
 

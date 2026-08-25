@@ -279,7 +279,26 @@ def _query_entry_points(conn, limit):
 
 def _query_prompts(conn, limit, arg):
     threshold = int(arg) if arg and arg.isdigit() else 60
-    rows = conn.execute(
+    # P3-1: si el cliente persistió prompt_id real (turno), agrupar por él;
+    # si no, caer al heurístico de gap de 60s entre eventos.
+    real_count = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE prompt_id IS NOT NULL AND prompt_id != ''"
+    ).fetchone()[0]
+    if real_count:
+        rows = conn.execute(
+            """SELECT prompt_id,
+                      MIN(ts) as start_ts, MAX(ts) as end_ts,
+                      COUNT(*) as events,
+                      (SELECT tool FROM events e2 WHERE e2.prompt_id = s1.prompt_id ORDER BY ts LIMIT 1) as first_tool,
+                      (SELECT tool FROM events e2 WHERE e2.prompt_id = s1.prompt_id ORDER BY ts DESC LIMIT 1) as last_tool
+               FROM events s1
+               WHERE prompt_id IS NOT NULL AND prompt_id != ''
+               GROUP BY prompt_id ORDER BY MAX(ts) DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        header = f"Prompts detected (real prompt_id from client, {real_count} events):"
+    else:
+        rows = conn.execute(
         """WITH ordered AS (
              SELECT ts, tool,
                     LAG(ts) OVER (ORDER BY ts) as prev_ts
@@ -308,7 +327,7 @@ def _query_prompts(conn, limit, arg):
     ).fetchall()
     if not rows:
         return "(no data)"
-    lines = [f"Prompts detected (gap > {threshold}s between events):"]
+    lines = [header]
     for r in rows:
         tools = f"{r['first_tool']} → {r['last_tool']}"
         start = r['start_ts'][:19] if r['start_ts'] else "?"
