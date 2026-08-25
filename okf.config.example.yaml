@@ -168,8 +168,11 @@ features:
   # Custom paths for Cognitive Trace.
   # null = use defaults (~/.hermes/cognitive-trace.db and
   # <vault>/.obsidian/plugins/cognitive-trace/event_log.jsonl)
-  trace_db_path: null
-  trace_jsonl_path: null
+  # Sinks de telemetría: rutas RELATIVAS se resuelven contra el vault (portables).
+  # Dejarlos null → ~/.hermes/cognitive-trace.db + <vault>/.obsidian/plugins/cognitive-trace/event_log.jsonl.
+  # En harnesses con sandbox (dsh web solo escribe en el vault), apuntar aquí:
+  trace_db_path: .obsidian/plugins/cognitive-trace/trace.db
+  trace_jsonl_path: .obsidian/plugins/cognitive-trace/event_log.jsonl
 
 # ── Body Templates ──────────────────────────────────────────
 # Templates that okf_new inserts as the initial body for each type.
