@@ -43,6 +43,7 @@ EDGE_TYPE_DEFINITIONS = {
             ("Insight", "Insight"),
             ("Criterio", "Criterio"),
             ("Spec", "Spec"),
+            ("LeccionAprendida", "Insight"),  # una lección precisa el diagnóstico que la origina
         ],
     },
     "fundamenta": {
@@ -56,6 +57,7 @@ EDGE_TYPE_DEFINITIONS = {
             ("Research", "Plan"),
             ("Research", "Decision"),
             ("Insight", "Plan"),  # un diagnóstico fundamenta el plan que lo atiende (P3-2)
+            ("LeccionAprendida", "Plan"),  # una lección fundamenta el plan que la instrumenta
         ],
     },
     "aplica": {
