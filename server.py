@@ -46,7 +46,12 @@ if "--vault" in sys.argv:
         pass
 VAULT = Path(_vault_arg or _default_vault).expanduser()
 MCP_DIR = Path(__file__).parent
-CLI = ["python3", "-m", "cli", "--vault", str(VAULT)]
+# Usar sys.executable (NO "python3" a secas): en el contenedor Docker el
+# python3 del PATH es el venv de Hermes cuyo "-m cli" es el CLI de Hermes,
+# no el paquete okf — rompe con "Could not consume arg: --vault". El
+# intérprete que ejecuta server.py es el correcto (wrapper fuerza
+# /usr/bin/python3 en Docker; venv con okf instalado en host).
+CLI = [sys.executable, "-m", "cli", "--vault", str(VAULT)]
 
 # Subprocess PYTHONPATH: MCP_DIR (donde vive el paquete cli) + lo que el entorno
 # traiga (en Docker: /opt/data/pylibs con mcp 1.28.1 + yaml). Sin esta unión,
