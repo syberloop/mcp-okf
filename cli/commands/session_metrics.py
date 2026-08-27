@@ -49,9 +49,32 @@ def _parse_metrics_section(body):
     return metrics
 
 
+def _sessions_dir(vault, config):
+    """Resuelve el directorio de sesiones del vault.
+
+    El nombre lo define el vault (types.directory.Session), no un literal: el
+    hardcode "sesiones" hacía que el comando reportara "(no sessions)" en
+    cualquier vault con el esquema en inglés (decisions/plans/insights/...),
+    que es el del config de ejemplo. Se conserva "sesiones" como último
+    recurso para vaults antiguos.
+    """
+    if config is not None:
+        try:
+            nombre = dict(config.types_directory).get("Session")
+        except Exception:
+            nombre = None
+        if nombre:
+            return vault / nombre
+    for nombre in ("sessions", "sesiones"):
+        candidato = vault / nombre
+        if candidato.exists():
+            return candidato
+    return vault / "sessions"
+
+
 def run(args, vault, config=None):
     """Generates aggregated metrics of all sessions."""
-    sesiones_dir = vault / "sesiones"
+    sesiones_dir = _sessions_dir(vault, config)
     if not sesiones_dir.exists():
         print("(no sessions)")
         return 0
