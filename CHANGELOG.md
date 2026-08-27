@@ -4,6 +4,34 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-08-27] — v0.3.1 (fix crítico)
+
+### Fixed
+- **`migrate-reads` truncaba el body de los conceptos**: `_fm_reads` reconstruía solo el frontmatter sin concatenar el contenido posterior. Ahora preserva el archivo completo (frontmatter editado + body). Tests de regresión: `test_migrate_preserves_body`, `test_increment_auto_migrate_preserves_body`.
+
+## [2026-08-27] — v0.3.0
+
+### Added
+- **Read counters fuera del frontmatter** (decisión 2026-08-27): los counters viven en `<vault>/.okf/state/reads.jsonl` — append-only, NO versionado, con lock por archivo (`fcntl.flock`). El frontmatter queda 100% contenido; se elimina la fricción de merge en vaults multi-actor con sync automático.
+- **`cli/reads_store.py`**: `get_reads`, `increment_reads`, `migrate_frontmatter_reads`, `find_vault`.
+- **Comando `migrate-reads`**: migración en masa (siembra counters del frontmatter al store + limpia el campo) — un commit único por vault.
+
+### Changed
+- `frontmatter.increment_reads` delega al store; auto-migra el campo legacy `reads: N` al primer read (baseline + limpieza).
+- `touch --all` lee del store (no del frontmatter).
+- `no_touch` / `OKF_SESSION_PURPOSE=test` siguen evitando el incremento.
+
+## [2026-08-27] — v0.2.0
+
+### Added
+- **Versionado del paquete**: `okf --version` (flag CLI); comparación con la última release en la tool `health` (informativa, no bloqueante).
+
+### Fixed
+- **Timestamp del frontmatter en `new`**: se generaba en UTC etiquetado como -05:00 (PR #1, 5h de desfase).
+- **Directorio de sesiones en `session-metrics`**: salía de un literal `"sesiones"`; ahora lee `types.directory.Session` del config con fallback (PR #2).
+
+---
+
 ## [2026-07-30]
 
 ### Added
