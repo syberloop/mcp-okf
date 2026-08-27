@@ -25,6 +25,8 @@ import os
 import time
 from pathlib import Path
 
+from cli import __version__
+
 
 def build_parser():
     """Builds the main parser with all subcommands."""
@@ -43,6 +45,9 @@ def build_parser():
                         help="Path to vault (default: $OKF_VAULT or ~/OKF-Vault)")
     parser.add_argument("--config", type=str, default=None,
                         help="Path to .okf.config.yaml (default: <vault>/.okf.config.yaml)")
+    parser.add_argument("--version", action="version",
+                        version=f"okf {__version__}",
+                        help="Show the installed version and exit")
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 

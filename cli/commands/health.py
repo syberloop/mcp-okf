@@ -518,6 +518,47 @@ def _check_timestamp_git(vault):
     return ok, warnings, errors
 
 
+def _check_version(vault):
+    """Checks the installed CLI version against the latest release of our repo.
+
+    Fuente de verdad: https://github.com/syberloop/mcp-okf (releases). NO PyPI —
+    el nombre 'okf-mcp' en PyPI pertenece a un proyecto de terceros (ver
+    Decision en el vault). Si no hay red o el repo no tiene releases, reporta
+    'no verificable' sin romper el health.
+
+    Returns:
+        dict: {"local": str, "latest": str|None, "up_to_date": bool|None,
+               "source": str}
+    """
+    from cli import __version__
+    local = __version__
+    latest = None
+    up_to_date = None
+
+    try:
+        import json as _json
+        import urllib.request as _ur
+
+        req = _ur.Request(
+            "https://api.github.com/repos/syberloop/mcp-okf/releases/latest",
+            headers={"Accept": "application/vnd.github+json",
+                     "User-Agent": "okf-mcp-health"},
+        )
+        with _ur.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        tag = (data.get("tag_name") or "").lstrip("v")
+        latest = tag or None
+        if latest:
+            def _key(v):
+                return tuple(int(x) for x in re.findall(r"\d+", v)[:3] or [0])
+            up_to_date = _key(local) >= _key(latest)
+    except Exception:
+        latest, up_to_date = None, None
+
+    return {"local": local, "latest": latest, "up_to_date": up_to_date,
+            "source": "github.com/syberloop/mcp-okf"}
+
+
 def run(args, vault, config=None):
     strict = getattr(args, "strict", False)
     json_out = getattr(args, "json", False)
@@ -600,6 +641,12 @@ def run(args, vault, config=None):
                                 "details": ts_warn[:10] + ts_err[:5]}
     all_warnings.extend(ts_warn)
     all_errors.extend(ts_err)
+
+    # 10. Versión instalada vs última release del repo (no PyPI)
+    # Informativo, NO bloquea el health: un tercero con versión vieja debe poder
+    # commitear igual; el reporte le dice que actualice. Solo se muestra.
+    version_info = _check_version(vault)
+    results["version"] = version_info
 
     # Score
     checks_total = 8  # base 8 (1-8)
@@ -708,6 +755,14 @@ def run(args, vault, config=None):
             print(f"   - {w}")
     else:
         print(f"✅ Timestamp↔git: {ts_ok}/{total_ts} match")
+
+    # Versión instalada vs última release (informativo, no afecta el score)
+    v = version_info
+    if v.get("latest") and v.get("up_to_date") is not None:
+        estado = "actualizada" if v["up_to_date"] else f"desactualizada — última: {v['latest']}"
+        print(f"ℹ️  Versión: {v['local']} ({estado}) · {v['source']}")
+    else:
+        print(f"ℹ️  Versión: {v['local']} (última release no verificable sin red) · {v['source']}")
 
     print("─" * 54)
     if all_errors:
