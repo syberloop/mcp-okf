@@ -283,6 +283,7 @@ def _extract_result_nodes(tool_name: str, args: list[str],
             else:
                 rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                        text=True, timeout=20,
+                                       cwd=str(VAULT),
                                        env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1",
                  "OKF_SESSION_ID": _get_session_id()})
                 if rerun.returncode != 0:
@@ -341,6 +342,7 @@ def _extract_result_edges(tool_name, args, result):
         else:
             rerun = subprocess.run(CLI + args + ["--json"], capture_output=True,
                                    text=True, timeout=20,
+                                   cwd=str(VAULT),
                                    env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1",
                  "OKF_SESSION_ID": _get_session_id()})
             if rerun.returncode != 0:
@@ -418,6 +420,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=str(VAULT),
             env={**os.environ, "PYTHONPATH": _SUBPROCESS_PYTHONPATH, "OKF_MCP_CALLER": "1",
                  "OKF_SESSION_ID": _get_session_id()},
         )
