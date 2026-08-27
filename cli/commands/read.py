@@ -53,7 +53,7 @@ def run(args, vault, config=None):
 
     # Touch (incrementar reads) — sesiones de test no contaminan la telemetría
     if not no_touch and not test_session:
-        new_val = increment_reads(filepath)
+        new_val = increment_reads(filepath, vault)
         if new_val:
             print(f"📖 {rel}  (reads: {new_val})", file=sys.stderr)
     else:

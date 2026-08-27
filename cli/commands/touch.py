@@ -7,20 +7,15 @@ from cli.frontmatter import increment_reads
 
 
 def _show_stats(vault):
-    """Show read stats for the entire vault."""
+    """Show read stats for the entire vault (from the telemetry store)."""
     from cli.vault import find_md_files
+    from cli.reads_store import get_reads
 
+    counts = get_reads(vault)
     results = []
     for md_file in find_md_files(vault):
-        try:
-            content = md_file.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        if not content.startswith("---"):
-            continue
-        match = re.search(r'^reads:\s*(\d+)', content, re.MULTILINE)
-        reads = int(match.group(1)) if match else 0
-        results.append((str(md_file.relative_to(vault)), reads))
+        rel = str(md_file.relative_to(vault))
+        results.append((rel, counts.get(rel, 0)))
 
     if not results:
         print("(no concepts)")
@@ -69,7 +64,7 @@ def run(args, vault, config=None):
                     print(f"  {c.relative_to(vault)}", file=sys.stderr)
             return 1
 
-    new_val = increment_reads(filepath)
+    new_val = increment_reads(filepath, vault)
     rel = filepath.relative_to(vault)
     print(f"  ✓ {rel} → reads: {new_val}")
     return 0

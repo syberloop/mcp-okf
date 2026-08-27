@@ -174,7 +174,13 @@ def build_parser():
     sp_touch = subparsers.add_parser("touch", help="Read statistics")
     sp_touch.add_argument("target", nargs="?", type=str, help="Concept to increment")
     sp_touch.add_argument("--all", action="store_true", default=False,
-                          help="Show stats for all concepts")
+                          help="Show read stats for the entire vault")
+
+    # ── migrate-reads ──
+    sp_migrate = subparsers.add_parser(
+        "migrate-reads",
+        help="Move read counters from frontmatter to the local telemetry store "
+             "(.okf/state/reads.jsonl, not versioned)")
 
     # ── trace ──
     sp_trace = subparsers.add_parser("trace", help="Trace references across the OKF ecosystem")
@@ -327,6 +333,9 @@ def main(argv=None):
 
         elif command == "touch":
             from cli.commands.touch import run
+            _exit = run(args, vault, config) or 0
+        elif command == "migrate-reads":
+            from cli.commands.migrate_reads import run
             _exit = run(args, vault, config) or 0
         elif command == "trace":
             from cli.commands.trace import run

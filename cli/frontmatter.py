@@ -154,48 +154,31 @@ def normalize_tags(tags_value):
     return []
 
 
-def increment_reads(filepath):
-    """Increments or creates the reads field in a file's frontmatter.
+def increment_reads(filepath, vault=None):
+    """Increments the reads counter for a concept.
+
+    Los counters viven en el store de telemetría local
+    (<vault>/.okf/state/reads.jsonl, no versionado) — decisión 2026-08-27:
+    escribirlos en el frontmatter versionaba ruido en cada lectura y
+    generaba conflictos constantes en vaults multi-actor con sync
+    automático. Si el archivo todavía tiene el campo viejo 'reads: N',
+    se migra solo (baseline + limpieza).
 
     Args:
         filepath: Path to .md file.
+        vault: Vault root. If None, derived by walking up looking for
+            .okf.config.yaml.
 
     Returns:
-        int: New value of the counter (0 if failed).
+        int: New total counter value (0 if failed).
     """
-    try:
-        content = filepath.read_text(encoding="utf-8")
-    except Exception:
+    if vault is None:
+        from cli.reads_store import find_vault
+        vault = find_vault(filepath)
+    if vault is None:
         return 0
-
-    if not content.startswith("---"):
-        return 0
-
-    end = content.find("\n---\n", 3)
-    if end == -1:
-        end = content.find("\n---", 3)
-    if end == -1:
-        return 0
-
-    fm = content[3:end]
-    after_fm = content[end:]
-
-    reads_match = re.search(r'^reads:\s*(\d+)', fm, re.MULTILINE)
-    if reads_match:
-        current = int(reads_match.group(1))
-        new_val = current + 1
-        fm = re.sub(r'^reads:\s*\d+', f'reads: {new_val}', fm, flags=re.MULTILINE)
-    else:
-        new_val = 1
-        # Insertar después de description si existe
-        if 'description:' in fm:
-            fm = re.sub(r'(description:.*\n)', r'\1reads: 1\n', fm, count=1)
-        else:
-            fm = fm.rstrip() + "\nreads: 1"
-
-    new_content = f"---\n{fm}{after_fm}"
-    filepath.write_text(new_content, encoding="utf-8")
-    return new_val
+    from cli.reads_store import increment_reads as _inc
+    return _inc(filepath, vault)
 
 
 def extract_typed_links(md_path, fm=None):
