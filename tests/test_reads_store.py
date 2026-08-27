@@ -77,6 +77,30 @@ class TestReadsStore(unittest.TestCase):
         self.assertNotIn("reads:", self.note.read_text(encoding="utf-8"))
         self.assertEqual(get_reads(self.vault).get("decisions/foo.md"), 6)
 
+    def test_migrate_preserves_body(self):
+        body = "# Foo\n\n## Seccion 1\nContenido con **formato** y [link](url).\n\n### Sub\n- item 1\n- item 2\n"
+        self.note.write_text(
+            "---\ntype: Insight\ntitle: Foo\ndescription: Bar\nreads: 7\n---\n" + body,
+            encoding="utf-8",
+        )
+        seeded, cleaned = migrate_frontmatter_reads(self.vault)
+        self.assertEqual((seeded, cleaned), (1, 1))
+        restored = self.note.read_text(encoding="utf-8")
+        self.assertIn(body, restored)  # el body sobrevive íntegro
+        self.assertNotIn("reads:", restored)
+
+    def test_increment_auto_migrate_preserves_body(self):
+        body = "# Foo\n\nParrafo del body que NO debe perderse.\n"
+        self.note.write_text(
+            "---\ntype: Insight\ntitle: Foo\ndescription: Bar\nreads: 5\n---\n" + body,
+            encoding="utf-8",
+        )
+        new_val = increment_reads(self.note, self.vault)
+        self.assertEqual(new_val, 6)
+        restored = self.note.read_text(encoding="utf-8")
+        self.assertIn(body, restored)
+        self.assertNotIn("reads:", restored)
+
     def test_legacy_field_in_body_is_not_touched(self):
         # Un 'reads:' en el body no debe confundirse con el contador
         self.note.write_text(

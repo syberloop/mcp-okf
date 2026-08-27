@@ -69,7 +69,8 @@ def _fm_reads(content):
     """Extrae (valor, contenido_limpio) del campo reads del frontmatter.
 
     Opera SOLO dentro del bloque frontmatter (no toca el body). Devuelve
-    (None, content) si no hay campo reads.
+    (None, content) si no hay campo reads. El contenido limpio preserva
+    TODO el archivo: frontmatter editado + body original.
     """
     m = _FM_RE.match(content)
     if not m:
@@ -80,7 +81,8 @@ def _fm_reads(content):
         return None, content
     n = int(rm.group(1))
     new_fm = re.sub(r"^reads:\s*\d+\n?", "", fm, count=1, flags=re.MULTILINE)
-    return n, m.group(1) + new_fm + m.group(3)
+    body = content[m.end():]
+    return n, m.group(1) + new_fm + m.group(3) + body
 
 
 @contextlib.contextmanager
