@@ -2,6 +2,7 @@
 
 import unittest
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from cli.commands.new import _parse_links, _build_frontmatter, run
@@ -157,5 +158,32 @@ created: 2026-01-01T00:00:00-05:00
         self.assertEqual(exit_code, 0)
 
 
+class TestFrontmatterTimestamp(unittest.TestCase):
+    """El sello temporal debe representar el instante real.
+
+    Regresion: _build_frontmatter tomaba la hora UTC y la etiquetaba como
+    -05:00 sin convertirla, asi que cada concepto nacia 5 horas en el futuro.
+    """
+
+    def _campo(self, fm, nombre):
+        for linea in fm.splitlines():
+            if linea.startswith(f"{nombre}:"):
+                return linea.split(":", 1)[1].strip()
+        self.fail(f"frontmatter sin campo {nombre}")
+
+    def test_timestamp_es_el_instante_real(self):
+        fm = _build_frontmatter("Insight", "Test", "desc", "", "", "", False)
+        ts = datetime.fromisoformat(self._campo(fm, "timestamp"))
+        self.assertIsNotNone(ts.tzinfo, "el timestamp debe llevar offset")
+        desfase = abs((ts - datetime.now(timezone.utc)).total_seconds())
+        self.assertLess(
+            desfase,
+            60,
+            f"timestamp desfasado {desfase / 3600:.1f} h del instante real",
+        )
+
+    def test_created_coincide_con_timestamp(self):
+        fm = _build_frontmatter("Insight", "Test", "desc", "", "", "", False)
+        self.assertEqual(self._campo(fm, "timestamp"), self._campo(fm, "created"))
 if __name__ == "__main__":
     unittest.main()
