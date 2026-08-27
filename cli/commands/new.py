@@ -262,7 +262,11 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
     Args:
         links: list[dict] | None — list of {"target": str, "type": str}.
     """
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S-05:00")
+    # Hora local de Colombia (UTC-5). datetime.now(timezone.utc) devuelve la hora
+    # UTC; sin restar el offset el sello quedaba 5 horas en el futuro, porque se
+    # etiquetaba como -05:00 una hora que en realidad era UTC. Mismo criterio que
+    # ya aplican review.py y health.py.
+    now = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%S-05:00")
 
     lines = ["---", f"type: {concept_type}"]
     lines.append(f'title: "{title.strip()}"')
