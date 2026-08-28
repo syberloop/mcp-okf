@@ -4,6 +4,14 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-08-28] — v0.4.2
+
+### Fixed
+- **`graph impact` contaba aristas como nodos y etiquetaba toda arista entrante como `depende`** (PR #6): el bloque de `depende` en `_cmd_impact` no tenía el guard `if etype != "depende": continue` que tienen los demás bloques — la salida mentía sobre la naturaleza de la relación y el total inflaba (2 aristas al mismo vecino = 4 "nodos impactados"). Fix: guard restaurado, `continue` suelto eliminado, agrupación por nodo (`_by_node`, conserva todas las razones) y `total` = nodos únicos. Tests: `tests/test_graph_impact.py`.
+- **`edge_types` desalineado con el config de ejemplo traducido** (PR #7): `okf.config.example.yaml` usa el vocabulario inglés (Agent, Framework, Criterion, Lesson) pero `valid_pairs` quedó en español — 15 de 32 pares (47%) inalcanzables para un vault del ejemplo, con warnings de validación falsos y `suggest-edge-types` cayendo al centinela ("extiende", "BAJA"). Fix: `TYPE_ALIASES` + `canonical_type()` normalizando en la entrada de `suggest_edge_type` y `validate_cross_type_pair` (sin duplicar pares). Tests: `tests/test_edge_types_nombres.py`.
+
+Tests: 147 + 36 subtests.
+
 ## [2026-08-28] — v0.4.1
 
 ### Changed
