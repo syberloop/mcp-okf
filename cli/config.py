@@ -4,7 +4,7 @@ Resolution chain:
     1. --config <path>               → explicit CLI argument
     2. $OKF_CONFIG             → environment variable
     3. <vault>/.okf.config.yaml       → next to the vault (95% of cases)
-    4. ~/.config/okf/config.yaml → global user config
+    4. ~/.config/okf/config.yaml → global user config (legacy: ~/.config/cli/)
     5. embedded defaults            → exact replica of Jaime's current configuration
 
 Principle: hardcode fundamental domain rules, configure what changes.
@@ -245,10 +245,13 @@ class Config:
         if vault_config.exists():
             return vault_config
 
-        # 4. Global del usuario
-        global_config = Path.home() / ".config" / "cli" / "config.yaml"
-        if global_config.exists():
-            return global_config
+        # 4. Global del usuario. La ruta documentada es ~/.config/okf/;
+        # ~/.config/cli/ se mantiene como legacy para no romper instalaciones
+        # que hayan seguido el codigo en vez del docstring.
+        for parent in ("okf", "cli"):
+            global_config = Path.home() / ".config" / parent / "config.yaml"
+            if global_config.exists():
+                return global_config
 
         # 5. Sin archivo → defaults
         return None
