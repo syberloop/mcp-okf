@@ -711,7 +711,11 @@ def index() -> str:
 
 @mcp.tool()
 def touch(all: bool = True) -> str:
-    """Read statistics of the OKF vault.
+    """Read statistics of the OKF vault (read counters from the local store).
+
+    The only supported mode is the stats table. The legacy manual increment
+    (touch <target>) is DEPRECATED since v0.4.1: `read` increments the
+    counter automatically — touch <target> is a no-op with a warning.
 
     Args:
         all: If True (default), shows table with counters + frequency bars

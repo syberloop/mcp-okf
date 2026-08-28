@@ -1,9 +1,7 @@
-"""touch command — Increment reads counter or show statistics."""
+"""touch command — Read statistics (--all). Increment mode deprecated since v0.4.1."""
 
-import re
 import sys
 from pathlib import Path
-from cli.frontmatter import increment_reads
 
 
 def _show_stats(vault):
@@ -35,36 +33,25 @@ def _show_stats(vault):
 
 
 def run(args, vault, config=None):
-    """Increment reads counter or show statistics."""
+    """Show read statistics (--all) — the ONLY supported mode since v0.4.1.
+
+    The manual increment mode (touch <target>) is DEPRECATED: since the read
+    counters moved to the local store (.okf/state/reads.jsonl, decision
+    2026-08-27), `read` increments automatically. Calling touch <target>
+    would double-count. It is now a documented no-op with a warning.
+    """
     if getattr(args, "all", False):
         return _show_stats(vault)
 
     target = getattr(args, "target", None)
     if not target:
-        print("Usage: python3 -m cli touch <concept> [--all]", file=sys.stderr)
+        print("Usage: python3 -m cli touch --all", file=sys.stderr)
         return 1
 
-    # Buscar el archivo
-    import fnmatch
-    filepath = None
-    for f in vault.rglob("*.md"):
-        if f.name == target or str(f.relative_to(vault)) == target:
-            filepath = f
-            break
-
-    if filepath is None:
-        candidates = [f for f in vault.rglob("*.md") if target in str(f.relative_to(vault))]
-        if len(candidates) == 1:
-            filepath = candidates[0]
-        else:
-            print(f"Not found: {target}", file=sys.stderr)
-            if candidates:
-                print("Matches:", file=sys.stderr)
-                for c in candidates[:10]:
-                    print(f"  {c.relative_to(vault)}", file=sys.stderr)
-            return 1
-
-    new_val = increment_reads(filepath, vault)
-    rel = filepath.relative_to(vault)
-    print(f"  ✓ {rel} → reads: {new_val}")
+    print(
+        f"⚠️  touch <target> está deprecado (v0.4.1): el contador de lectura "
+        f"se incrementa automáticamente con `read`. Este llamado no "
+        f"incrementó nada — usá `touch --all` para estadísticas de lectura.",
+        file=sys.stderr,
+    )
     return 0
