@@ -4,6 +4,13 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-08-28] — v0.4.3
+
+### Fixed
+- **`edge_types`: normalización incompleta del #7** (PR #8): (1) `score_edge` no normalizaba — la señal estructural (0.40 de 0..1) se perdía para vaults con el vocabulario inglés del config de ejemplo (una arista caía de "fuerte" a "mediocre" solo por el idioma del nombre); (2) regresión del #7: se normalizaba la consulta pero no los `valid_pairs` declarados por el vault en su `.okf.config.yaml` — un par escrito en inglés nunca matcheaba. Fix: `_canonicalize_pairs` normaliza ambos lados de la comparación al resolver definiciones (sobre copias, sin mutar el config; `resolve_definitions(None)` sigue devolviendo la tabla embebida por identidad) y `score_edge` normaliza su consulta. Tests: `tests/test_edge_types_alias_completo.py`.
+
+Tests: 153 + 44 subtests.
+
 ## [2026-08-28] — v0.4.2
 
 ### Fixed
