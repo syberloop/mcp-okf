@@ -1,14 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "okf-mcp"
-version = "0.4.0"
-description = "MCP server for OKF vaults — 17 tools for AI agents to query, create, and analyze concepts"
+description = "MCP server for OKF vaults — 20 tools for AI agents to query, create, update, and analyze concepts"
+# La versión NO se hardcodea acá: se lee dinámicamente de cli/__init__.py
+# (__version__) — única fuente de verdad. Ver [tool.setuptools.dynamic].
+# Bumpear solo cli/__init__.py; el paquete instalado reporta la misma versión
+# (pip show / importlib.metadata). Si esto se rompe, tests/test_version.py falla.
 requires-python = ">=3.11"
 dependencies = ["mcp[cli]>=1.0.0,<2", "pyyaml>=6.0"]
 license = { text = "MIT" }
 readme = "README.md"
-
-# La versión se mantiene en cli/__init__.py (__version__) — single source of truth.
-# Si cambia el paquete, actualizar AMBOS: cli/__init__.py y esta línea.
+dynamic = ["version"]
 
 [project.scripts]
 okf-mcp = "server:mcp.run"
@@ -16,3 +21,6 @@ okf-mcp = "server:mcp.run"
 [tool.setuptools]
 py-modules = ["server", "measure"]
 packages = ["cli", "cli.commands"]
+
+[tool.setuptools.dynamic]
+version = { attr = "cli.__version__" }

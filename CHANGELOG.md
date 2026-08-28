@@ -4,6 +4,11 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Versión dinámica en `pyproject.toml`**: `dynamic = ["version"]` con `attr = "cli.__version__"` — la versión ya no se hardcodea en dos lugares. Un único bump en `cli/__init__.py` y el paquete instalado (`pip show`) reporta lo mismo. Causa de fondo del fix del PR #3 (v0.4.0 quedó con pyproject en 0.3.1). `tests/test_version.py` ahora protege el contrato: sin literal `version` en `[project]`, `dynamic` presente, `attr` apuntando a `cli.__version__`, y semver válido. 127 tests verdes.
+
 ## [2026-08-28] — v0.4.0
 
 ### Added
