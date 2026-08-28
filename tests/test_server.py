@@ -36,11 +36,17 @@ class ServerPersistenceTests(unittest.TestCase):
         self.assertEqual(event["exit_code"], 124)
 
     def test_created_path_is_relative_to_vault(self):
+        # El path tiene que colgar del VAULT que ve el server, no de uno fijo:
+        # sin el patch, este test solo pasa en la maquina cuyo VAULT resuelve a
+        # /home/jota/OKF-Vault, y en cualquier otra _extract_created_path
+        # devuelve None (correctamente: el path no cae dentro del vault).
+        vault = Path("/home/jota/OKF-Vault")
         result = SimpleNamespace(
             returncode=0,
-            stdout="✅ Created: /home/jota/OKF-Vault/insights/new.md\n",
+            stdout=f"✅ Created: {vault / 'insights' / 'new.md'}\n",
         )
-        self.assertEqual(server._extract_created_path(result), "insights/new.md")
+        with patch.object(server, "VAULT", vault):
+            self.assertEqual(server._extract_created_path(result), "insights/new.md")
 
     def test_search_persists_all_filter_parameters(self):
         with patch.object(server, "_run", return_value="ok") as run:
