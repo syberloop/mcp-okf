@@ -595,6 +595,8 @@ def _cmd_impact(graph, filename, vault=None):
     for entry in data.get("typed_in", []):
         source = entry["target"]
         etype = entry["type"]
+        if etype != "depende":
+            continue
         raw_score = entry.get("score", 0.5)  # default 0.5 si no hay score (retrocompat)
         reason = f"{source} depende de este nodo"
         if raw_score >= 0.7:
@@ -603,7 +605,6 @@ def _cmd_impact(graph, filename, vault=None):
             warning.append((source, f"{reason} [score: {raw_score}]"))
         else:
             info.append((source, f"{reason} [score: {raw_score}]"))
-        continue
 
     # X aplica B → typed_in con type=aplica
     for entry in data.get("typed_in", []):
@@ -681,30 +682,37 @@ def _cmd_impact(graph, filename, vault=None):
     if not blocking and not warning and not info:
         return f"📋 {resolved}: no typed edges indicating impact. No one depends ontologically on this node."
 
+    def _by_node(entries):
+        """Agrupa (path, reason) por nodo, conservando todos sus motivos.
+
+        Un nodo alcanzado por varias aristas es UN nodo impactado con varias
+        razones, no varios nodos: el conteo cuenta nodos, no aristas.
+        """
+        grouped = {}
+        for path, reason in entries:
+            reasons = grouped.setdefault(path, [])
+            if reason not in reasons:
+                reasons.append(reason)
+        return grouped
+
     lines = [f"📋 If you modify '{resolved}', also review:\n"]
 
-    if blocking:
-        lines.append(f"🔴 MANDATORY REVIEW ({len(blocking)}):")
-        for path, reason in sorted(set(blocking)):
+    for icon, title, entries in (
+        ("🔴", "MANDATORY REVIEW", blocking),
+        ("🟡", "CONSIDER REVIEW", warning),
+        ("🔵", "INFORMATIVE", info),
+    ):
+        grouped = _by_node(entries)
+        if not grouped:
+            continue
+        lines.append(f"{icon} {title} ({len(grouped)}):")
+        for path in sorted(grouped):
             lines.append(f"  {path}")
-            lines.append(f"     {reason}")
+            for reason in grouped[path]:
+                lines.append(f"     {reason}")
         lines.append("")
 
-    if warning:
-        lines.append(f"🟡 CONSIDER REVIEW ({len(warning)}):")
-        for path, reason in sorted(set(warning)):
-            lines.append(f"  {path}")
-            lines.append(f"     {reason}")
-        lines.append("")
-
-    if info:
-        lines.append(f"🔵 INFORMATIVE ({len(info)}):")
-        for path, reason in sorted(set(info)):
-            lines.append(f"  {path}")
-            lines.append(f"     {reason}")
-        lines.append("")
-
-    total = len(blocking) + len(warning) + len(info)
+    total = len({path for path, _ in blocking + warning + info})
     lines.append(f"Total: {total} potentially impacted nodes.")
 
     return "\n".join(lines)
