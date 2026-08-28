@@ -116,6 +116,29 @@ def resolve_definitions(definitions=None) -> dict:
     return definitions
 
 
+# Alias de nombres de tipo → nombre canónico usado en valid_pairs.
+#
+# El config de ejemplo se tradujo al inglés (commit 5e26f5d, 29-jul-2026) pero
+# esta tabla quedó en el vocabulario anterior, y los pares agregados después
+# siguieron usándolo. Un vault creado desde okf.config.example.yaml declara
+# Agent / Framework / Criterion / Lesson, que no aparecen en ningún valid_pair:
+# 15 de los 32 pares definidos quedaban inalcanzables.
+#
+# Se normaliza en la entrada en vez de duplicar los pares, para que agregar un
+# par nuevo no exija acordarse de escribirlo dos veces.
+TYPE_ALIASES = {
+    "Agent": "Agente",
+    "Framework": "MarcoTeorico",
+    "Criterion": "Criterio",
+    "Lesson": "LeccionAprendida",
+}
+
+
+def canonical_type(type_name: str) -> str:
+    """Nombre canónico de un tipo, resolviendo alias de vocabulario."""
+    return TYPE_ALIASES.get(type_name, type_name)
+
+
 def suggest_edge_type(type_origen: str, type_destino: str,
                       definitions=None) -> tuple:
     """Suggests the most likely edge_type for a pair of types.
@@ -131,10 +154,11 @@ def suggest_edge_type(type_origen: str, type_destino: str,
         If no useful suggestion, returns ("extiende", "BAJA").
     """
     defs = resolve_definitions(definitions)
+    par = (canonical_type(type_origen), canonical_type(type_destino))
     matches = []
     for etype, defn in defs.items():
         pairs = defn.get("valid_pairs", [])
-        if (type_origen, type_destino) in pairs:
+        if par in pairs:
             matches.append(etype)
 
     if len(matches) == 1:
@@ -177,7 +201,7 @@ def validate_cross_type_pair(type_origen: str, type_destino: str,
     if not valid_pairs:
         return []
 
-    if (type_origen, type_destino) not in valid_pairs:
+    if (canonical_type(type_origen), canonical_type(type_destino)) not in valid_pairs:
         # Buscar sugerencia de tipo alternativo
         alt_type, confidence = suggest_edge_type(
             type_origen, type_destino, definitions=definitions)
