@@ -354,6 +354,13 @@ def record(tool_name: str, params: dict, exit_code: int,
     if os.environ.get("OKF_MCP_CALLER") == "1":
         return
 
+    # Invocación interna del propio CLI (el smoke test de health corre 8
+    # subprocesos para comprobar que los comandos responden). Son verificación,
+    # no uso: registrarlas hace que las agregaciones midan al verificador en
+    # lugar del trabajo real.
+    if os.environ.get("OKF_SUPPRESS_TELEMETRY") == "1":
+        return
+
     # Marcador de sesión de test: no contamina las agregaciones de atención
     purpose = os.environ.get("OKF_SESSION_PURPOSE", "").strip()
     if purpose:

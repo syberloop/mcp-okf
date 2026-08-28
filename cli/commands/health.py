@@ -271,6 +271,10 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
                 capture_output=True, text=True, timeout=timeout,
                 cwd=str(vault),
                 env={**os.environ,
+                     # Smoke test: verificación, no uso. Sin esto cada health
+                     # deja 8 eventos de telemetría y las métricas terminan
+                     # describiendo al health check en vez del trabajo real.
+                     "OKF_SUPPRESS_TELEMETRY": "1",
                      "PYTHONPATH": cli_module + ((":" + os.environ["PYTHONPATH"])
                                                  if os.environ.get("PYTHONPATH") else ""),
                      "OKF_VAULT": str(vault)},
