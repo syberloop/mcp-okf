@@ -56,5 +56,29 @@ class ServerPersistenceTests(unittest.TestCase):
         self.assertTrue(params["json_output"])
 
 
+class TestServerTodosTool(unittest.TestCase):
+    def test_todos_tool_registered(self):
+        import server
+        self.assertTrue(hasattr(server, "todos"))
+
+    def test_todos_wraps_search_with_todos_flag(self):
+        import server
+        from unittest.mock import patch
+        with patch.object(server, "_run", return_value="📋 Pending tasks") as mock_run:
+            result = server.todos()
+        self.assertEqual(result, "📋 Pending tasks")
+        args = mock_run.call_args[0][0]
+        self.assertEqual(args, ["search", "--todos"])
+        self.assertEqual(mock_run.call_args[1]["tool_name"], "okf_todos")
+
+    def test_todos_aging_and_all_flags(self):
+        import server
+        from unittest.mock import patch
+        with patch.object(server, "_run", return_value="ok") as mock_run:
+            server.todos(all=True, aging=True, json_output=True)
+        args = mock_run.call_args[0][0]
+        self.assertEqual(args, ["search", "--todos", "--all", "--aging", "--json"])
+
+
 if __name__ == "__main__":
     unittest.main()

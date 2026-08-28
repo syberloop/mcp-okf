@@ -512,12 +512,13 @@ def traverse(slug: str = "", depth: int = 2, direction: str = "both", no_cyber: 
 
 @mcp.tool()
 def search(query: str = "", type: str = "", status: str = "", cyber_field: str = "", cyber_value: str = "", todos: bool = False, json_output: bool = False, since: str = "", until: str = "", with_graph: bool = False) -> str:
-    """FTS5 search in the OKF vault. FALLBACK — prefer traverse or index reads.
+    """FTS5 search in the OKF vault + pending tasks list (todos=true). FALLBACK — prefer traverse or index reads.
 
     Use only when:
     - Traversal doesn't find a path in ≤6 hops
     - You need to filter by specific fields (type, status, cyber)
-    - You're looking for pending tasks (--todos)
+    - You're looking for pending tasks: prefer the dedicated `todos` tool,
+      or set todos=true here
     - You need to filter by date range (--since, --until)
 
     Args:
@@ -558,6 +559,31 @@ def search(query: str = "", type: str = "", status: str = "", cyber_field: str =
         "cyber_field": cyber_field, "cyber_value": cyber_value,
         "todos": todos, "json_output": json_output,
         "since": since, "until": until,
+    })
+
+
+@mcp.tool()
+def todos(all: bool = False, aging: bool = False, json_output: bool = False) -> str:
+    """Lists pending tasks (- [ ] checkboxes) in the OKF vault, grouped by project.
+
+    USE THIS tool when asked about pending tasks, todos, open checkboxes or
+    "tareas pendientes" — NOT health/review/stale (those are diagnostics, not
+    task lists). Wrapper around search(todos=true).
+
+    Args:
+        all: Include completed (- [x]) tasks too
+        aging: Add per-task age via git blame (fresh ≤3d / aging 3-7d / stale >7d)
+        json_output: If True, JSON output
+    """
+    args = ["search", "--todos"]
+    if all:
+        args.append("--all")
+    if aging:
+        args.append("--aging")
+    if json_output:
+        args.append("--json")
+    return _run(args, tool_name="okf_todos", params={
+        "all": all, "aging": aging, "json_output": json_output,
     })
 
 
