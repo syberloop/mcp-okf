@@ -368,8 +368,10 @@ def run(args, vault, config=None):
         filepath = vault / subdir / filename
 
     if filepath.exists():
-        print(f"❌ Already exists: {filepath}", file=sys.stderr)
-        return 1
+        if not getattr(args, "force", False):
+            print(f"❌ Already exists: {filepath}", file=sys.stderr)
+            print("   Use --force to overwrite, or `edit` to update it.", file=sys.stderr)
+            return 1
 
     # --- Parsear y validar links (NUEVO) ---
     parsed_links = []

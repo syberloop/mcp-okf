@@ -169,6 +169,35 @@ def build_parser():
                              "entity=Lopcort → clientes/Lopcort/<slug>.md). "
                              "Required when the type groups by entity "
                              "(types.by_entity in config).")
+    sp_new.add_argument("--force", action="store_true", default=False,
+                        help="Overwrite the concept if the slug already exists")
+
+    # ── edit ──
+    sp_edit = subparsers.add_parser("edit", help="Update an existing concept (merge)")
+    sp_edit.add_argument("slug", type=str,
+                         help="Concept path (e.g. 'decisions/mi-decision', "
+                              "'mi-decision.md', or bare basename found in the graph)")
+    sp_edit.add_argument("--title", default=None,
+                         help="New title (frontmatter only; does not rename the file)")
+    sp_edit.add_argument("--description", default=None,
+                         help="New one-line summary (cannot be emptied)")
+    sp_edit.add_argument("--tags", default=None,
+                         help="Comma-separated tags (empty string clears)")
+    sp_edit.add_argument("--status", default=None,
+                         help="New status (empty string clears)")
+    sp_edit.add_argument("--resource", default=None,
+                         help="New canonical URI (empty string clears)")
+    sp_edit.add_argument("--body", default=None,
+                         help="New body content (replaces the current body)")
+    sp_edit.add_argument("--body-file", default=None,
+                         help="File with body content")
+    sp_edit.add_argument("--link", dest="links", action="append", default=None,
+                         help="Typed link 'target:type' (repeatable). "
+                              "REPLACES the full links list")
+    sp_edit.add_argument("--clear-links", action="store_true", default=False,
+                         help="Remove all typed links")
+    sp_edit.add_argument("--dry-run", action="store_true", default=False,
+                         help="Preview without writing")
 
     # ── touch ──
     sp_touch = subparsers.add_parser("touch", help="Read statistics")
@@ -329,6 +358,10 @@ def main(argv=None):
 
         elif command == "new":
             from cli.commands.new import run
+            _exit = run(args, vault, config) or 0
+
+        elif command == "edit":
+            from cli.commands.edit import run
             _exit = run(args, vault, config) or 0
 
         elif command == "touch":

@@ -780,6 +780,65 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
     })
 
 
+@mcp.tool()
+def edit(slug: str, title: str = "", description: str = "", tags: str = "",
+         status: str = "", resource: str = "", body: str = "", links: str = "",
+         clear_links: bool = False, dry_run: bool = False) -> str:
+    """Updates an existing concept in the OKF vault (merge semantics).
+
+    The ONLY canonical way to update a concept. `new` is create-only and
+    aborts if the slug already exists.
+
+    Merge semantics: only the fields you pass are changed; everything else
+    (type, created, cyber block, custom fields, existing links) is preserved.
+    The frontmatter `timestamp` is always refreshed on a real change — it
+    represents the last meaningful edit (OKF v0.1 standard).
+
+    Args:
+        slug: Concept path (e.g. 'decisions/mi-decision', 'mi-decision.md',
+              or bare basename found in the graph)
+        title: New title (frontmatter only; does not rename the file)
+        description: New one-line summary (cannot be emptied)
+        tags: Comma-separated tags (empty string clears)
+        status: New status (empty string clears)
+        resource: New canonical URI (empty string clears)
+        body: New body content (replaces the current body)
+        links: Comma-separated typed links, format target:type.
+               REPLACES the full links list (e.g.: 'frameworks/tp3:extiende,decisions/criterio:refina')
+        clear_links: If True, removes all typed links
+        dry_run: If True, previews the result without writing
+    """
+    args = ["edit", slug]
+    if title:
+        args += ["--title", title]
+    if description:
+        args += ["--description", description]
+    if tags:
+        args += ["--tags", tags]
+    if status:
+        args += ["--status", status]
+    if resource:
+        args += ["--resource", resource]
+    if body:
+        args += ["--body", body]
+    if links:
+        for link in links.split(","):
+            link = link.strip()
+            if link:
+                args += ["--link", link]
+    if clear_links:
+        args.append("--clear-links")
+    if dry_run:
+        args.append("--dry-run")
+    return _run(args, tool_name="okf_edit", params={
+        "slug": slug, "title": title, "description": description,
+        "tags": tags, "status": status, "resource": resource,
+        "body": body[:100] + "..." if len(body) > 100 else body,
+        "links": links if links else None, "clear_links": clear_links,
+        "dry_run": dry_run,
+    })
+
+
 # ── Cognitive Trace: Analytics + Commands ───────────────────────────────────
 
 @mcp.tool()
