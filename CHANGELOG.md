@@ -4,6 +4,21 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-08-28] — v0.4.0
+
+### Added
+- **Tool `mcp__okf__edit`** (comando CLI `edit`): update de conceptos con merge semantics — la vía canónica para actualizar (new es create-only y aborta con "Already exists"). Solo cambia los campos pasados (title, description, tags, status, resource, body, links), preserva type/created/cyber/campos custom y refresca `timestamp` (último cambio significativo, OKF v0.1). `--link` reemplaza la lista completa; `--clear-links` la vacía; `--dry-run` previsualiza. Validación de links idéntica a new (edge types, targets, duplicados, cross-type).
+- **Tool `mcp__okf__todos`** (wrapper de `search --todos`): lista de tareas pendientes `- [ ]` agrupadas por proyecto. Nombre auto-descriptivo para el catálogo diferido — resuelve el caso real donde el agente respondía con health/review/stale ante "¿qué tareas hay pendientes?" (lección 2026-08-28, vaults OKF y skynet).
+- **`new --force`**: sobrescribe si el slug ya existe (reemplazo total intencional).
+
+### Changed
+- Descripción de la tool `search`: la primera línea ahora incluye "pending tasks list (todos=true)" y remite a la tool dedicada `todos`.
+
+### Fixed
+- Serializador de frontmatter en `edit`: YAML 1.1 parsea timestamps ISO como `datetime`; `isoformat` preserva la "T" (con `str()` se perdía: "2026-01-01 00:00:00").
+
+Tests: 123 verdes.
+
 ## [2026-08-27] — v0.3.1 (fix crítico)
 
 ### Fixed
