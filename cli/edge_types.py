@@ -113,7 +113,30 @@ def resolve_definitions(definitions=None) -> dict:
     """
     if definitions is None:
         return EDGE_TYPE_DEFINITIONS
-    return definitions
+    return _canonicalize_pairs(definitions)
+
+
+def _canonicalize_pairs(definitions: dict) -> dict:
+    """Normaliza a canónico los nombres de tipo de cada valid_pairs.
+
+    Un vault puede declarar sus propios pares con el vocabulario de
+    okf.config.example.yaml (Lesson, Framework, Criterion, Agent). Normalizar
+    solo la consulta no alcanza: esos pares quedarían sin matchear nunca. Hay
+    que normalizar los dos lados de la comparación.
+    """
+    resultado = {}
+    for etype, defn in definitions.items():
+        pares = defn.get("valid_pairs")
+        if not pares:
+            resultado[etype] = defn
+            continue
+        copia = dict(defn)
+        copia["valid_pairs"] = [
+            (canonical_type(origen), canonical_type(destino))
+            for origen, destino in pares
+        ]
+        resultado[etype] = copia
+    return resultado
 
 
 # Alias de nombres de tipo → nombre canónico usado en valid_pairs.
@@ -304,7 +327,8 @@ def score_edge(
         valid_pairs = defn.get("valid_pairs", [])
         if not valid_pairs:  # 'corrige' — sin restricción
             score += 0.40
-        elif (source_type, target_type) in valid_pairs:
+        elif (canonical_type(source_type),
+              canonical_type(target_type)) in valid_pairs:
             score += 0.40
         # Par no válido → 0.0 en esta señal
 
