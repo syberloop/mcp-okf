@@ -4,6 +4,11 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-08-29] — v0.4.4
+
+### Fixed
+- **Pre-commit hook: falso positivo bloqueaba todos los commits por `LONG DESCRIPTION`**: el hook matcheaba `🚨` genérico en el stderr del indexer, confundiendo el warning informativo `🚨 LONG DESCRIPTION` (description >600 chars — el indexer trunca y sigue) con el error real `🚨 MISSING DESCRIPTION` (directorio sin description en index.md). Cualquier concept con description larga bloqueaba el commit de cualquiera. Fix: el hook ahora bloquea solo con `grep -q "MISSING DESCRIPTION"`. Además el hook se versiona en `hooks/pre-commit` (antes solo existía instalado en `.git/hooks/` del vault, sin fuente de verdad — por eso el bug pasó desapercibido).
+
 ## [2026-08-28] — v0.4.3
 
 ### Fixed

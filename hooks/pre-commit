@@ -1,0 +1,190 @@
+#!/bin/bash
+# OKF Vault — pre-commit hook
+# 1. Valida archivos staged (bloqueante)
+# 2. Regenera índices y dashboard
+# 3. Health check informativo
+# 4. Bloqueo por referencias cruzadas (bloqueante)
+# 5. Stagea index.md y dashboard.md
+
+VAULT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/OKF-Vault")"
+LOCK="$VAULT/.git/hooks/.okf-hook-lock"
+
+# Evitar recursión
+if [ -f "$LOCK" ]; then
+    exit 0
+fi
+
+touch "$LOCK"
+trap 'rm -f "$LOCK"' EXIT
+cd "$VAULT" || exit 0
+
+CLI_DIR="$HOME/.hermes/mcp-servers/okf"
+PYTHONPATH="$CLI_DIR"
+export PYTHONPATH
+
+# ── 1. VALIDACIÓN BLOQUEANTE ──
+echo "🔍 Validando archivos staged..."
+VALIDATE_OUT=$(python3 -m cli --vault "$VAULT" validate 2>&1)
+VALIDATE_EXIT=$?
+
+if [ $VALIDATE_EXIT -ne 0 ]; then
+    echo "$VALIDATE_OUT" >&2
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║   🚨  COMMIT BLOQUEADO — VALIDACIÓN FALLIDA  🚨             ║"
+    echo "║                                                              ║"
+    echo "║   Corregí los errores de arriba y volvé a commitear.         ║"
+    echo "║   Para bypassear (solo en emergencia):                       ║"
+    echo "║     git commit --no-verify                                   ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    exit 1
+fi
+echo "$VALIDATE_OUT"
+
+# ── 2. REGENERAR ÍNDICES Y DASHBOARD ──
+echo ""
+echo "🔄 Regenerando índices y dashboard..."
+INDEX_ERR=$(python3 -m cli --vault "$VAULT" index 2>&1 >/dev/null)
+python3 -m cli --vault "$VAULT" dashboard 2>/dev/null
+
+# Bloquear solo si el indexer encontró directorios SIN descripción (error real).
+# NO bloquear por LONG DESCRIPTION (warning informativo: el indexer trunca y sigue).
+if echo "$INDEX_ERR" | grep -q "MISSING DESCRIPTION"; then
+    echo "$INDEX_ERR" >&2
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║   🚨  COMMIT BLOQUEADO — INDEX SIN DESCRIPCIÓN  🚨         ║"
+    echo "║                                                              ║"
+    echo "║   Uno o más directorios no tienen description en index.md.   ║"
+    echo "║   Agregá 'description' al frontmatter del index.md           ║"
+    echo "║   correspondiente y re-commiteá.                             ║"
+    echo "║                                                              ║"
+    echo "║   Para bypassear (solo en emergencia):                       ║"
+    echo "║     git commit --no-verify                                   ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    exit 1
+fi
+
+# ── 3. HEALTH CHECK INFORMATIVO ──
+echo ""
+echo "🔍 Health check:"
+python3 -m cli --vault "$VAULT" health 2>/dev/null || true
+
+# ── 4. ANÁLISIS DE IMPACTO ONTOLÓGICO ──
+echo ""
+echo "🧠 Analizando impacto ontológico..."
+
+CHANGED=$(git diff --cached --name-only 2>/dev/null)
+[ -z "$CHANGED" ] && CHANGED=$(git diff --name-only 2>/dev/null)
+
+# Hash del estado staged actual para detectar re-intentos
+STAGED_HASH=$(echo "$CHANGED" | sha256sum | cut -d' ' -f1)
+LAST_BLOCKED_FILE="$VAULT/.git/hooks/.okf-last-blocked"
+LAST_HASH=""
+if [ -f "$LAST_BLOCKED_FILE" ]; then
+    LAST_HASH=$(cat "$LAST_BLOCKED_FILE" 2>/dev/null)
+fi
+
+# Si es un re-intento con los mismos archivos, confiar en el agente
+if [ -n "$LAST_HASH" ] && [ "$STAGED_HASH" = "$LAST_HASH" ]; then
+    echo "  ✓ Re-intento detectado — el agente ya verificó estos impactos."
+    rm -f "$LAST_BLOCKED_FILE"
+else
+    BLOCK_IMPACT=false
+    WARN_IMPACT=false
+    IMPACT_DETAIL=""
+    IMPACT_FILES=""
+
+    # Recolectar archivos .md cambiados (excluyendo índices, log, sesiones)
+    for file in $CHANGED; do
+        case "$file" in
+            *.md) ;;
+            *) continue ;;
+        esac
+        case "$file" in
+            index.md|log.md|dashboard.md|sesiones/*) continue ;;
+        esac
+        [ ! -f "$file" ] && continue
+        IMPACT_FILES="$IMPACT_FILES $file"
+    done
+
+    if [ -n "$IMPACT_FILES" ]; then
+        # Un solo build_graph para todos los archivos
+        IMPACT_OUT=$(python3 -m cli --vault "$VAULT" graph impact-batch $IMPACT_FILES 2>/dev/null)
+
+        # Parsear output por archivo (separado por --- y 📋)
+        CURRENT_FILE=""
+        while IFS= read -r line; do
+            case "$line" in
+                "📋 If you modify "*)
+                    CURRENT_FILE=$(echo "$line" | sed "s/📋 If you modify '//;s/',.*//")
+                    ;;
+                "🔴 MANDATORY REVIEW"*)
+                    BLOCK_IMPACT=true
+                    IMPACT_DETAIL="${IMPACT_DETAIL}
+  📄 $CURRENT_FILE → mandatory review:"
+                    ;;
+                "🟡 CONSIDER REVIEW"*)
+                    WARN_IMPACT=true
+                    IMPACT_DETAIL="${IMPACT_DETAIL}
+  📄 $CURRENT_FILE → consider review:"
+                    ;;
+                "🔵 INFORMATIVE"*)
+                    ;;
+                "---"|"")
+                    ;;
+                "Total:"*)
+                    ;;
+                "  "*)
+                    if [ -n "$CURRENT_FILE" ]; then
+                        IMPACT_DETAIL="${IMPACT_DETAIL}
+     ${line#  }"
+                    fi
+                    ;;
+            esac
+        done <<EOF
+$IMPACT_OUT
+EOF
+
+        FILE_COUNT=$(echo "$IMPACT_FILES" | wc -w)
+        echo "  ✓ $FILE_COUNT archivo(s) analizados en una sola pasada"
+    fi
+
+    if [ -n "$IMPACT_FILES" ]; then
+        echo "  ✓ $FILE_COUNT archivo(s) analizados — impacto ontológico verificado"
+    else
+        echo "  ✓ Sin archivos .md para analizar"
+    fi
+
+    if [ "$BLOCK_IMPACT" = true ]; then
+        echo "🧠 Impacto ontológico detectado:"
+        echo "$IMPACT_DETAIL"
+        echo ""
+        echo "$STAGED_HASH" > "$LAST_BLOCKED_FILE"
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║   🧠  COMMIT BLOQUEADO — IMPACTO ONTOLÓGICO  🧠            ║"
+        echo "║                                                              ║"
+        echo "║   Los archivos arriba dependen ontológicamente de lo que     ║"
+        echo "║   estás modificando (depende, aplica, fundamenta).           ║"
+        echo "║   Revisalos. Si no requieren cambios, re-commiteá.           ║"
+        echo "║                                                              ║"
+        echo "║   Para bypassear (solo en emergencia):                       ║"
+        echo "║     git commit --no-verify                                   ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+        exit 1
+    fi
+
+    if [ "$WARN_IMPACT" = true ]; then
+        echo "🧠 Impactos a considerar (no bloquean el commit):"
+        echo "$IMPACT_DETAIL"
+        echo ""
+    fi
+
+    rm -f "$LAST_BLOCKED_FILE"
+fi
+
+# ── 5. STAGE INDEX Y DASHBOARD ──
+git add '**/index.md' index.md dashboard.md
