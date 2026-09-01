@@ -69,6 +69,8 @@ def build_parser():
                            help="With --todos: include type=Spec checkboxes (acceptance criteria, not tasks)")
     sp_search.add_argument("--include-skills", action="store_true", default=False,
                            help="With --todos: include type=Skill checkboxes (self-audit checklists, not tasks)")
+    sp_search.add_argument("--include-sessions", action="store_true", default=False,
+                           help="With --todos: include type=Session checkboxes (that day's snapshot, not a live backlog)")
     sp_search.add_argument("--with-graph", action="store_true", default=False,
                            help="Show typed edges between results at the end")
     sp_search.add_argument("--json", action="store_true", default=False,
