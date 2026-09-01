@@ -43,6 +43,7 @@ types:
     - Criterion
     - Session
     - Research
+    - Handoff
 
   # Types that can have a cyber block (sensor → target_metric → review_on).
   # Only applies if you use the cybernetic loop.
@@ -79,6 +80,7 @@ types:
     Criterion: criteria
     Session: sessions
     Research: research
+    Handoff: handoffs
 
 # ── Staleness Thresholds ─────────────────────────────────────
 # Control the semantic staleness detector (okf_stale).
@@ -313,3 +315,28 @@ templates:
     ## OKF Instantiation
 
     (Reference to the concrete instance in our ecosystem)
+
+  Handoff: |
+    ## Context
+
+    (What was being done, and why — 2-3 sentences)
+
+    ## Completed
+
+    - [ ] (items with [x] and the commit that completed them)
+
+    ## Pending
+
+    - [ ] (prioritized items with files, lines, likely causes)
+
+    ## Verifiable state
+
+    (commit hash, test_pass_rate, files modified — checkable data, not narrative)
+
+    ## Ecosystem signals
+
+    (new decisions, health checks, watchdogs, relevant insights at close)
+
+    ## How to resume
+
+    (boot instruction for the next session: where to start, what to read first)

@@ -10,7 +10,7 @@ from pathlib import Path
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
     "MarcoTeorico", "LeccionAprendida", "Tool", "Spec", "Skill", "Workflow", "Criterio",
-    "Sesion", "Research", "Mapa", "Harness",
+    "Sesion", "Research", "Mapa", "Harness", "Handoff",
 }
 
 # Types que califican para bloque cyber: — defaults
@@ -35,6 +35,7 @@ TYPE_DIR = {
     "Research": "research",
     "Mapa": "mapas",
     "Harness": "harnesses",
+    "Handoff": "handoffs",
 }
 
 BODY_TEMPLATES = {
@@ -210,6 +211,30 @@ python3 <script> "<comando>" [timeout]
 
 (Referencia a la instancia concreta en nuestro ecosistema)
 """,
+    "Handoff": """## Contexto
+
+(Qué se estaba haciendo, por qué — 2-3 frases)
+
+## Completado
+
+- [ ] (ítems con [x] y commit de referencia)
+
+## Pendientes
+
+- [ ] (ítems priorizados con archivos, líneas, causas probables)
+
+## Estado verificable
+
+(commit hash, test_pass_rate, archivos modificados — datos comprobables, no narrativa)
+
+## Señales del ecosistema
+
+(decisiones nuevas, health checks, watch dogs, insights relevantes al cierre)
+
+## Para retomar
+
+(instrucción de arranque para la próxima sesión: por dónde empezar, qué leer primero)
+""",
 }
 
 
@@ -274,6 +299,9 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
 
     if status:
         lines.append(f"status: {status}")
+    elif concept_type == "Handoff":
+        # Handoff: ciclo de vida propio (pending | completed | expired) — spec de handoff
+        lines.append("status: pending")
 
     if resource:
         lines.append(f'resource: "{resource}"')
@@ -309,6 +337,26 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
     elif cyber:
         print(f"⚠️  --cyber ignored: type '{concept_type}' does not qualify "
               f"(only {', '.join(sorted(cyber_types))})", file=sys.stderr)
+
+    # Campos específicos de Handoff — spec de handoff (repo_state, graph_state)
+    # + spec de ritmo multisession (state, next_session_at, interval, last_activity_at)
+    if concept_type == "Handoff":
+        lines.append('session_id: ""')
+        lines.append("priority: media")
+        lines.append('project: ""')
+        lines.append("state: activo")
+        lines.append(f"last_activity_at: {now}")
+        lines.append('next_session_at: ""')
+        lines.append("interval: daily")
+        lines.append(f"checkpoint_at: {now}")
+        lines.append("repo_state:")
+        lines.append('  commit: ""')
+        lines.append('  branch: ""')
+        lines.append('  test_pass_rate: ""')
+        lines.append("  files_modified: []")
+        lines.append("graph_state:")
+        lines.append('  vault_commit: ""')
+        lines.append("  vecindarios: []")
 
     lines.append("---")
     return "\n".join(lines) + "\n"

@@ -59,6 +59,7 @@ EDGE_TYPE_DEFINITIONS = {
             ("Research", "Decision"),
             ("Insight", "Plan"),  # un diagnóstico fundamenta el plan que lo atiende (P3-2)
             ("LeccionAprendida", "Plan"),  # una lección fundamenta el plan que la instrumenta
+            ("Sesion", "Handoff"),  # una sesión fundamenta el handoff que deriva de ella (spec de handoff)
         ],
     },
     "aplica": {
@@ -74,6 +75,10 @@ EDGE_TYPE_DEFINITIONS = {
             ("Spec", "MarcoTeorico"),
             ("Project", "Plan"),
             ("Workflow", "Spec"),
+            ("Handoff", "Plan"),      # el handoff aplica el plan que instruye
+            ("Handoff", "Decision"),  # el handoff aplica la decisión que materializa
+            ("Handoff", "Spec"),      # el handoff aplica la spec que implementa
+            ("Handoff", "Project"),   # el handoff aplica el proyecto que retoma
         ],
     },
     "depende": {
