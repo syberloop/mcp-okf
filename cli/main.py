@@ -196,6 +196,10 @@ def build_parser():
                               "REPLACES the full links list")
     sp_edit.add_argument("--clear-links", action="store_true", default=False,
                          help="Remove all typed links")
+    sp_edit.add_argument("--field", dest="fields", action="append", default=None,
+                         help="Custom frontmatter field 'key=value' (repeatable). "
+                              "Dotted keys set nested blocks (repo_state.commit=abc). "
+                              "JSON for lists/dicts; empty value deletes the field")
     sp_edit.add_argument("--dry-run", action="store_true", default=False,
                          help="Preview without writing")
 

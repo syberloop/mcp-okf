@@ -156,6 +156,51 @@ def _serialize(fields, links):
     return "\n".join(lines) + "\n"
 
 
+def _parse_field_value(raw: str):
+    """Parse a --field value: JSON for containers, bools/ints, plain string otherwise.
+
+    Empty string → None (deletes the field).
+    """
+    raw = raw.strip()
+    if raw == "":
+        return None
+    if raw.startswith("[") or raw.startswith("{"):
+        import json
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+    if raw in ("true", "false"):
+        return raw == "true"
+    if raw in ("null", "~"):
+        return None
+    if re.fullmatch(r"-?\d+", raw):
+        return int(raw)
+    if re.fullmatch(r"-?\d+\.\d+", raw):
+        return float(raw)
+    return raw
+
+
+def _set_dotted(fields, key, value, changed):
+    """Set a (possibly dotted) key in the fields dict; empty value removes it."""
+    parts = key.split(".")
+    target = fields
+    for part in parts[:-1]:
+        nxt = target.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            target[part] = nxt
+        target = nxt
+    leaf = parts[-1]
+    if value is None:
+        if leaf in target:
+            target.pop(leaf, None)
+            changed.append(key)
+    elif target.get(leaf) != value:
+        target[leaf] = value
+        changed.append(key)
+
+
 def _validate_links(parsed_links, vault, config, source_path, concept_type):
     """Validate typed links: edge types, existing targets, duplicates, cross-type.
 
@@ -275,6 +320,22 @@ def run(args, vault, config=None):
             else:
                 fields.pop("tags", None)
             changed.append("tags")
+
+    # ── custom fields: --field key=value (dotted keys = nested) ──
+    # Necesario para el type Handoff: checkpoints incrementales actualizan
+    # repo_state.commit, next_session_at, state, session_id, etc.
+    field_specs = getattr(args, "fields", None)
+    if field_specs:
+        for spec in field_specs:
+            if "=" not in spec:
+                print(f"❌ Invalid --field: '{spec}'. Use 'key=value'", file=sys.stderr)
+                return 1
+            raw_key, raw_value = spec.split("=", 1)
+            key = raw_key.strip()
+            if not key:
+                print(f"❌ Invalid --field: '{spec}'. Empty key", file=sys.stderr)
+                return 1
+            _set_dotted(fields, key, _parse_field_value(raw_value), changed)
 
     # ── typed links: replace semantics ──
     links_raw = getattr(args, "links", None)

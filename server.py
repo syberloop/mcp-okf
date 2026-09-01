@@ -813,7 +813,7 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
 @mcp.tool()
 def edit(slug: str, title: str = "", description: str = "", tags: str = "",
          status: str = "", resource: str = "", body: str = "", links: str = "",
-         clear_links: bool = False, dry_run: bool = False) -> str:
+         fields: list | None = None, clear_links: bool = False, dry_run: bool = False) -> str:
     """Updates an existing concept in the OKF vault (merge semantics).
 
     The ONLY canonical way to update a concept. `new` is create-only and
@@ -835,6 +835,9 @@ def edit(slug: str, title: str = "", description: str = "", tags: str = "",
         body: New body content (replaces the current body)
         links: Comma-separated typed links, format target:type.
                REPLACES the full links list (e.g.: 'frameworks/tp3:extiende,decisions/criterio:refina')
+        fields: List of custom frontmatter fields 'key=value' (repeatable).
+               Dotted keys set nested blocks (repo_state.commit=abc).
+               JSON for lists/dicts; empty value deletes the field.
         clear_links: If True, removes all typed links
         dry_run: If True, previews the result without writing
     """
@@ -856,6 +859,9 @@ def edit(slug: str, title: str = "", description: str = "", tags: str = "",
             link = link.strip()
             if link:
                 args += ["--link", link]
+    if fields:
+        for field in fields:
+            args += ["--field", str(field)]
     if clear_links:
         args.append("--clear-links")
     if dry_run:
