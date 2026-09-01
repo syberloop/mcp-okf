@@ -458,8 +458,11 @@ def _check_timestamp_git(vault):
     ok, warnings, errors = 0, [], []
 
     # Un solo git log batchado (antes: ~2 subprocesos por archivo ≈ 10s).
-    from cli.gitutil import build_git_dates_index
+    from cli.gitutil import build_git_dates_index, build_uncommitted_set
     git_index = build_git_dates_index(vault)
+    # Un archivo con cambios sin commitear no puede tener el timestamp
+    # "en el futuro": el commit contra el que se compara todavia no existe.
+    uncommitted = build_uncommitted_set(vault)
 
     for f in find_md_files(vault):
         rel = str(f.relative_to(vault))
@@ -500,7 +503,7 @@ def _check_timestamp_git(vault):
             last_dt = datetime.fromisoformat(entry["last"].strip())
             last_date = last_dt.astimezone(timezone.utc).date() if last_dt.tzinfo else last_dt.date()
             # Timestamp >1 día en el futuro respecto al último commit
-            if (ts_date - last_date).days > 1:
+            if (ts_date - last_date).days > 1 and rel not in uncommitted:
                 warnings.append(
                     f"{rel}: timestamp={ts_date} es futuro vs git last-edit={last_date}"
                 )

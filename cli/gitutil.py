@@ -16,6 +16,7 @@ _ISO_DATE_RE = re.compile(
 # Caché por proceso: el CLI ejecuta un comando por proceso, y el índice
 # git no cambia durante la ejecución de un comando.
 _DATES_CACHE = {}
+_UNCOMMITTED_CACHE = {}
 
 
 def _parse_iso(value):
@@ -80,6 +81,53 @@ def build_git_dates_index(vault):
 
     _DATES_CACHE[cache_key] = index
     return index
+
+
+def build_uncommitted_set(vault):
+    """Builds the set of relpaths with uncommitted changes (index or worktree).
+
+    A file that is being committed right now cannot have its timestamp "in the
+    future" relative to its last commit: that commit does not exist yet. Any
+    check that compares a frontmatter timestamp against ``git log`` has to
+    exempt these files, or editing a concept that was last committed more than
+    a day ago becomes impossible.
+
+    One subprocess: ``git status --porcelain``.
+
+    Args:
+        vault: Path to the git repository root.
+
+    Returns:
+        set[str] — relpaths as git reports them. Empty set if the vault is not
+        a git repo or git is unavailable.
+    """
+    cache_key = str(vault)
+    cached = _UNCOMMITTED_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    paths = set()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(vault), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return set()
+    except Exception:
+        return set()
+
+    for line in result.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].strip()
+        # Renombrados vienen como "old -> new": nos interesa el destino.
+        if " -> " in path:
+            path = path.split(" -> ")[-1].strip()
+        paths.add(path.strip('"'))
+
+    _UNCOMMITTED_CACHE[cache_key] = paths
+    return paths
 
 
 def first_last_for(relpath, index):
