@@ -188,3 +188,8 @@ fi
 
 # ── 5. STAGE INDEX Y DASHBOARD ──
 git add '**/index.md' index.md dashboard.md
+
+# ── 6. REGENERAR PREFILL (no bloqueante) ──
+# El prefill (handoffs pending + boot sequence + resumenes de sesiones) debe
+# reflejar el estado actual del vault en cada commit. Fallo = silencioso.
+python3 "$HOME/.hermes/scripts/regenerar-prefill.py" >/dev/null 2>&1 || true
