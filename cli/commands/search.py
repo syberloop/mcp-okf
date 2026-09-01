@@ -66,7 +66,7 @@ def _get_git_blame_cache(vault, relpath):
         return None
 
 
-def find_todos(vault, include_done=False, with_aging=False, include_specs=False, include_skills=False):
+def find_todos(vault, include_done=False, with_aging=False, include_specs=False, include_skills=False, include_sessions=False):
     """Finds all - [ ] and - [x] in vault files.
 
     By default EXCLUDES files with type: Spec — their checkboxes are
@@ -76,6 +76,11 @@ def find_todos(vault, include_done=False, with_aging=False, include_specs=False,
     procedure self-audit checklists (quality criteria),
     not backlog items (decision 2026-08-06).
     Pass include_skills=True to include them explicitly.
+    Also EXCLUDES files with type: Session — their checkboxes are the
+    snapshot of what was pending on that date, not a live backlog: a past
+    session keeps re-injecting its frozen list forever, and what it injects
+    is mostly already done. Pass include_sessions=True to include them
+    explicitly.
     """
     todos = []
     blame_cache = {}
@@ -97,6 +102,9 @@ def find_todos(vault, include_done=False, with_aging=False, include_specs=False,
             continue
         # Checklists de auto-auditoría de skills NO son tareas (decisión 2026-08-06)
         if not include_skills and fm.get("type") == "Skill":
+            continue
+        # Los checkboxes de una minuta son la foto de ese día, no backlog vivo
+        if not include_sessions and fm.get("type") == "Session":
             continue
 
         if with_aging and relpath not in blame_cache:
@@ -462,7 +470,8 @@ def run(args, vault, config=None):
     if todos_mode:
         include_specs = getattr(args, "include_specs", False)
         include_skills = getattr(args, "include_skills", False)
-        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs, include_skills=include_skills)
+        include_sessions = getattr(args, "include_sessions", False)
+        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs, include_skills=include_skills, include_sessions=include_sessions)
         agent_bus_signals = find_agent_bus_signals()
         todos.extend(agent_bus_signals)
         if json_out:
