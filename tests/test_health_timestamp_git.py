@@ -104,5 +104,31 @@ class TestTimestampGitSinCommitear(TimestampGitTestBase):
         self.assertIn("es futuro", propios[0])
 
 
+class TestTimestampGitUTC(TimestampGitTestBase):
+    """Regresión del defecto de `%aI` con fechas UTC.
+
+    git log --format=%aI emite el sufijo 'Z' para autor dates en UTC, y
+    _ISO_DATE_RE solo aceptaba [+-]HH:MM — el índice salía vacío y el check
+    no evaluaba NADA (falso 8/8). El fixture base esquiva el caso con -05:00;
+    este test lo ejercita de frente.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.hace_10_utc = self.hoy.astimezone(timezone.utc) - timedelta(days=10)
+
+    def test_commit_utc_con_timestamp_futuro_si_avisa(self):
+        """Un commit fechado en UTC (sufijo Z) debe evaluarse, no esquivarse."""
+        self._escribir("utc", self.hoy)
+        self._git("add", "-A")
+        # Commit con autor date en UTC: git emite '2026-...Z' en %aI.
+        self._git("commit", "-q", "-m", "inicial", fecha=self.hace_10_utc)
+
+        warnings = self._warnings()
+        propios = [w for w in warnings if "utc.md" in w]
+        self.assertEqual(len(propios), 1, f"esperaba 1 warning, hay: {warnings}")
+        self.assertIn("es futuro", propios[0])
+
+
 if __name__ == "__main__":
     unittest.main()

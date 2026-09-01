@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime, timezone
 
 _ISO_DATE_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}:?\d{2}$"
+    r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:?\d{2}|Z)$"
 )
 
 # Caché por proceso: el CLI ejecuta un comando por proceso, y el índice
