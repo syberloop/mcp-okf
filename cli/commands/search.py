@@ -66,7 +66,7 @@ def _get_git_blame_cache(vault, relpath):
         return None
 
 
-def find_todos(vault, include_done=False, with_aging=False, include_specs=False, include_skills=False, include_sessions=False):
+def find_todos(vault, include_done=False, with_aging=False, include_specs=False, include_skills=False, include_sessions=False, include_handoffs=False):
     """Finds all - [ ] and - [x] in vault files.
 
     By default EXCLUDES files with type: Spec — their checkboxes are
@@ -81,6 +81,10 @@ def find_todos(vault, include_done=False, with_aging=False, include_specs=False,
     session keeps re-injecting its frozen list forever, and what it injects
     is mostly already done. Pass include_sessions=True to include them
     explicitly.
+    Also EXCLUDES files with type: Handoff — their checkboxes are the
+    frozen handoff state of a session, not a live backlog: they re-inject
+    the same items every session until the handoff is updated. Pass
+    include_handoffs=True to include them explicitly.
     """
     todos = []
     blame_cache = {}
@@ -105,6 +109,9 @@ def find_todos(vault, include_done=False, with_aging=False, include_specs=False,
             continue
         # Los checkboxes de una minuta son la foto de ese día, no backlog vivo
         if not include_sessions and fm.get("type") == "Session":
+            continue
+        # Los checkboxes de un handoff son estado congelado de una sesión
+        if not include_handoffs and fm.get("type") == "Handoff":
             continue
 
         if with_aging and relpath not in blame_cache:
@@ -471,7 +478,8 @@ def run(args, vault, config=None):
         include_specs = getattr(args, "include_specs", False)
         include_skills = getattr(args, "include_skills", False)
         include_sessions = getattr(args, "include_sessions", False)
-        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs, include_skills=include_skills, include_sessions=include_sessions)
+        include_handoffs = getattr(args, "include_handoffs", False)
+        todos = find_todos(vault, include_done=include_all, with_aging=with_aging, include_specs=include_specs, include_skills=include_skills, include_sessions=include_sessions, include_handoffs=include_handoffs)
         agent_bus_signals = find_agent_bus_signals()
         todos.extend(agent_bus_signals)
         if json_out:
