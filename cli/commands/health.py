@@ -68,17 +68,19 @@ def _check_frontmatter(vault):
 def _check_indices(vault):
     ok, stale = 0, []
 
+    from cli.vault import EXCLUDE_FILES as _EXCL, EXCLUDE_DIRS as _EXCL_DIRS
     for idx_file in sorted(vault.rglob("index.md")):
         parent = idx_file.parent
+        rel_parts = parent.relative_to(vault).parts if parent != vault else ()
+        if any(p in _EXCL_DIRS for p in rel_parts):
+            continue  # carpeta fuera del régimen de índices (p.ej. .dsh-build)
         rel_dir = str(parent.relative_to(vault)) if parent != vault else "root"
 
-        from cli.vault import EXCLUDE_FILES as _EXCL
         real_files = {f.name for f in parent.glob("*.md")
                       if f.name not in _EXCL}
         real_dirs = {d.name for d in parent.iterdir()
                      if d.is_dir() and (d / "index.md").exists()
-                     and d.name not in (".git", ".obsidian", "Templates", "scripts",
-                                        "references", "assets")}
+                     and d.name not in _EXCL_DIRS}
 
         try:
             text = idx_file.read_text(encoding="utf-8")
@@ -223,6 +225,8 @@ def _check_broken_links(vault):
 
         for m in re.finditer(r'\[\[([^\]|#]+)(?:[|#][^\]]+)?\]\]', clean):
             target = m.group(1).strip().rstrip('\\')
+            if target.startswith(("http://", "https://")):
+                continue  # URL externa, no wikilink local
             resolved = _resolve_simple(target, vault, f.parent, name_index)
             if resolved and resolved not in all_relpaths:
                 candidate = vault / resolved
@@ -231,6 +235,8 @@ def _check_broken_links(vault):
 
         for m in re.finditer(r'\[([^\]]*)\]\(([^)]+\.md)\)', clean):
             target = m.group(2).strip()
+            if target.startswith(("http://", "https://")):
+                continue  # URL externa terminada en .md, no ruta local
             resolved = _resolve_simple(target, vault, f.parent, name_index)
             if resolved and resolved not in all_relpaths:
                 candidate = vault / resolved
