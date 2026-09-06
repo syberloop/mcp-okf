@@ -23,6 +23,10 @@ Notas de implementación:
   - Si la db de eventos no existe: los campos SQLite van null/vacíos.
   - stale_distribution usa las claves del plan (FRESCO) mapeando el FRESH
     que produce stale.py.
+  - conceptos: detalle por nodo (type/status/timestamp/stale/cyber) para el
+    panel. collect_stale corre UNA vez por snapshot y su resultado alimenta
+    tanto stale_distribution como conceptos[].stale; status/timestamp/cyber
+    salen de una pasada extra de find_md_files + parse_frontmatter.
   - --canvas combina con cli.commands.canvas.generate_canvas: genera un mapa
     de calor alrededor del nodo más visitado en sistema/mapas/.
 """
@@ -365,17 +369,21 @@ def _infracciones_7d(vault, config):
     return total
 
 
-def _stale_distribution(vault, config):
-    """Distribución FRESCO/ATENCION/STALE (stale.py produce FRESH en inglés)."""
+def _collect_stale_results(vault, config):
+    """Una pasada de collect_stale compartida por _stale_distribution y
+    _conceptos_section — el scan (≈570 nodos + git index) no se duplica."""
     from cli.commands.stale import collect_stale
     if config:
-        results = collect_stale(
+        return collect_stale(
             vault, config.stale_timestamp_days, config.stale_propuesta_days,
             config.stale_no_commits_days, config.stale_checkbox_ratio,
             config.stale_problem_patterns,
         )
-    else:
-        results = collect_stale(vault)
+    return collect_stale(vault)
+
+
+def _stale_distribution(results):
+    """Distribución FRESCO/ATENCION/STALE (stale.py produce FRESH en inglés)."""
     dist = {"FRESCO": 0, "ATENCION": 0, "STALE": 0}
     for r in results:
         level = r["level"]
@@ -386,6 +394,94 @@ def _stale_distribution(vault, config):
         else:
             dist["STALE"] += 1
     return dist
+
+
+# Niveles de staleness en el schema del dashboard (inglés → español del plan)
+_STALE_LEVEL_ES = {"FRESH": "FRESCO", "ATTENTION": "ATENCION", "STALE": "STALE"}
+
+
+def _cyber_por_nodo(fm, today_iso):
+    """Bloque cyber de un nodo normalizado para conceptos[].cyber.
+
+    None si el frontmatter no tiene bloque cyber (o no es dict). vencido =
+    review_on existe y es anterior a hoy (comparación ISO, misma semántica
+    que review.collect_due). target_metric se reduce al nombre de la
+    métrica (el vault usa {name, target}).
+    """
+    cyber = fm.get("cyber")
+    if not isinstance(cyber, dict):
+        return None
+    review_on = cyber.get("review_on")
+    review_on_str = str(review_on) if review_on else None
+    metric = cyber.get("target_metric")
+    if isinstance(metric, dict):
+        target_metric = str(metric["name"]) if metric.get("name") else None
+    elif metric:
+        target_metric = str(metric)
+    else:
+        target_metric = None
+    return {
+        "outcome": str(cyber.get("outcome", "") or ""),
+        "review_on": review_on_str,
+        "vencido": bool(review_on_str) and review_on_str < today_iso,
+        "target_metric": target_metric,
+    }
+
+
+def _conceptos_section(vault, stale_results):
+    """Detalle por concepto: una entrada por nodo con type en su frontmatter.
+
+    Criterios:
+      - Nodos con frontmatter pero sin type NO son conceptos: se omiten.
+      - index.md/log.md/dashboard.md generados ya los excluye find_md_files.
+      - stale se toma de los resultados compartidos de collect_stale; si un
+        concepto no aparece allí (frontmatter ilegible en esa pasada),
+        stale=null y queda al final del orden.
+
+    Orden: STALE → ATENCION → FRESCO, dentro por file; sin stale al final.
+    """
+    stale_by_file = {r["file"]: r for r in stale_results}
+    today_iso = _domain_today().isoformat()
+    conceptos = []
+    for f in find_md_files(vault):
+        rel = str(f.relative_to(vault))
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        fm, _ = parse_frontmatter(text)
+        if not fm or not fm.get("type"):
+            continue
+        ts = fm.get("timestamp")
+        if isinstance(ts, datetime):
+            timestamp = ts.isoformat()
+        elif ts:
+            timestamp = str(ts)
+        else:
+            timestamp = None
+        stale_r = stale_by_file.get(rel)
+        if stale_r is None:
+            stale = None
+        else:
+            stale = {
+                "level": _STALE_LEVEL_ES.get(stale_r["level"], stale_r["level"]),
+                "signal_count": stale_r["signal_count"],
+                "signals": stale_r["signals"],
+            }
+        conceptos.append({
+            "file": rel[:-3] if rel.endswith(".md") else rel,
+            "type": str(fm.get("type", "")),
+            "title": str(fm.get("title", rel)),
+            "status": str(fm.get("status", "") or ""),
+            "timestamp": timestamp,
+            "stale": stale,
+            "cyber": _cyber_por_nodo(fm, today_iso),
+        })
+
+    orden = {"STALE": 0, "ATENCION": 1, "FRESCO": 2}
+    conceptos.sort(key=lambda c: (
+        orden.get((c["stale"] or {}).get("level"), 9), c["file"]))
+    return conceptos
 
 
 # ── Construcción del snapshot ──
@@ -400,7 +496,9 @@ def _build_snapshot(vault, config=None, db_path=None, source="manual"):
     health = _health_section(vault, config)
     graph = _graph_section(vault)
     cibernetica = _cibernetica_section(vault)
-    dist = _stale_distribution(vault, config)
+    stale_results = _collect_stale_results(vault, config)
+    dist = _stale_distribution(stale_results)
+    conceptos = _conceptos_section(vault, stale_results)
 
     actividad = {
         "sesiones_7d": db["sesiones_7d"] if db else None,
@@ -457,6 +555,7 @@ def _build_snapshot(vault, config=None, db_path=None, source="manual"):
         "cibernetica": cibernetica,
         "actividad": actividad,
         "calor_estructural": calor_estructural,
+        "conceptos": conceptos,
         "negocio": None,  # fase 2 del plan: Umami API + D1, fuera del vault
         "tendencias": {
             "health_score_trend": health_score_trend,

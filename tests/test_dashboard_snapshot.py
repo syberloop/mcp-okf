@@ -157,8 +157,8 @@ class TestSchema(SnapshotFixture):
     def test_campos_top_level(self):
         snap = self._run()
         esperados = {"generated_at", "generated_by", "source", "health", "graph",
-                     "cibernetica", "actividad", "calor_estructural", "negocio",
-                     "tendencias"}
+                     "cibernetica", "actividad", "calor_estructural",
+                     "conceptos", "negocio", "tendencias"}
         self.assertEqual(set(snap.keys()), esperados)
         self.assertIsNone(snap["negocio"])  # fase 2 del plan
         self.assertTrue(snap["generated_at"].endswith(("-05:00", "+00:00")))
