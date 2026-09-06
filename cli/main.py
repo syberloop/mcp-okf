@@ -13,6 +13,7 @@ Commands:
     new         Create a new concept
     touch       Read statistics
     dashboard   Generate dashboard.md
+    dashboard-snapshot  Generate dashboard.json + daily snapshot
     stale       Semantic staleness detector
     review      Cybernetic review (expired review_on)
     audit       Audit frontmatter of all concepts
@@ -242,6 +243,21 @@ def build_parser():
     # ── dashboard ──
     sp_dash = subparsers.add_parser("dashboard", help="Generate dashboard.md")
 
+    # ── dashboard-snapshot ──
+    sp_snap = subparsers.add_parser(
+        "dashboard-snapshot",
+        help="Generate dashboard.json + daily snapshot (DashboardView sensor)")
+    sp_snap.add_argument("--source", type=str, default="manual",
+                         choices=["manual", "post-commit-hook", "cron"],
+                         help="Who triggered the snapshot (default: manual)")
+    sp_snap.add_argument("--canvas", action="store_true", default=False,
+                         help="Also generate a heat canvas around the most "
+                              "visited node (sistema/mapas/)")
+    sp_snap.add_argument("--db", type=str, default=None,
+                         help="Override the Cognitive Trace SQLite path "
+                              "(default: config features.trace_db_path or "
+                              "~/.hermes/cognitive-trace.db)")
+
     # ── stale ──
     sp_stale = subparsers.add_parser("stale", help="Semantic staleness detector")
     sp_stale.add_argument("--json", action="store_true", default=False,
@@ -388,6 +404,10 @@ def main(argv=None):
 
         elif command == "dashboard":
             from cli.commands.dashboard import run
+            _exit = run(args, vault, config) or 0
+
+        elif command == "dashboard-snapshot":
+            from cli.commands.dashboard_snapshot import run
             _exit = run(args, vault, config) or 0
 
         elif command == "stale":

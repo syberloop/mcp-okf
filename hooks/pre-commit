@@ -47,6 +47,8 @@ echo ""
 echo "🔄 Regenerando índices y dashboard..."
 INDEX_ERR=$(python3 -m cli --vault "$VAULT" index 2>&1 >/dev/null)
 python3 -m cli --vault "$VAULT" dashboard 2>/dev/null
+# Sensor DashboardView: dashboard.json + snapshot diario. No bloquea el commit.
+python3 -m cli --vault "$VAULT" dashboard-snapshot --source post-commit-hook 2>/dev/null || true
 
 # Bloquear solo si el indexer encontró directorios SIN descripción (error real).
 # NO bloquear por LONG DESCRIPTION (warning informativo: el indexer trunca y sigue).
