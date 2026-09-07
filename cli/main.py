@@ -253,6 +253,11 @@ def build_parser():
     sp_snap.add_argument("--canvas", action="store_true", default=False,
                          help="Also generate a heat canvas around the most "
                               "visited node (sistema/mapas/)")
+    sp_snap.add_argument("--session-a", type=str, default="",
+                         help="Session Diff: primer session_id a comparar")
+    sp_snap.add_argument("--session-b", type=str, default="",
+                         help="Session Diff: segundo session_id a comparar "
+                              "(requiere --session-a)")
     sp_snap.add_argument("--db", type=str, default=None,
                          help="Override the Cognitive Trace SQLite path "
                               "(default: config features.trace_db_path or "

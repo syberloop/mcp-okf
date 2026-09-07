@@ -146,7 +146,9 @@ class SnapshotFixture(unittest.TestCase):
     def _args(self, **kwargs):
         return SimpleNamespace(db=kwargs.get("db", "/nonexistent/events.db"),
                                source=kwargs.get("source", "manual"),
-                               canvas=kwargs.get("canvas", False))
+                               canvas=kwargs.get("canvas", False),
+                               session_a=kwargs.get("session_a", ""),
+                               session_b=kwargs.get("session_b", ""))
 
     def _run(self, **kwargs):
         run(self._args(**kwargs), self.vault, None)
@@ -158,9 +160,10 @@ class TestSchema(SnapshotFixture):
         snap = self._run()
         esperados = {"generated_at", "generated_by", "source", "health", "graph",
                      "cibernetica", "actividad", "calor_estructural",
-                     "conceptos", "negocio", "tendencias"}
+                     "conceptos", "negocio", "session_diff", "tendencias"}
         self.assertEqual(set(snap.keys()), esperados)
         self.assertIsNone(snap["negocio"])  # fase 2 del plan
+        self.assertIsNone(snap["session_diff"])  # sin db de eventos → sin diff
         self.assertTrue(snap["generated_at"].endswith(("-05:00", "+00:00")))
 
     def test_secciones_del_plan(self):
@@ -314,6 +317,134 @@ class TestDBPresente(SnapshotFixture):
         data = json.loads(canvas.read_text(encoding="utf-8"))
         ids = {n["id"] for n in data["nodes"]}
         self.assertIn("conceptos/a", ids)  # top visited = raíz del mapa
+
+
+class TestSessionDiff(SnapshotFixture):
+    """Capa Session Diff del DashboardView: nodos solo en A / solo en B /
+    en ambas, con default = 2 sesiones de agente más recientes y modo
+    explícito --session-a/--session-b (acepta sesiones de sistema)."""
+
+    def setUp(self):
+        super().setUp()
+        self.db = _db_con_actividad(self.vault / "events-sessions.db")
+        # El fixture usa session_ids s0/s1 (no-sistema) → default automático.
+        # s0: traverse+read sobre conceptos/a · s1: traverse conceptos/a,
+        # conceptos/b, conceptos/antiguo.
+
+    def test_default_elige_2_sesiones_de_agente(self):
+        snap = self._run(db=str(self.db))
+        sd = snap["session_diff"]
+        self.assertIsNotNone(sd)
+        # s0 (traverse conceptos/a + read) y s1 (traverse a/b/antiguo)
+        self.assertIn(sd["session_a"]["id"], ("s0", "s1"))
+        self.assertIn(sd["session_b"]["id"], ("s0", "s1"))
+        self.assertNotEqual(sd["session_a"]["id"], sd["session_b"]["id"])
+        # nodos (basename): a en ambas; b y antiguo solo en s1
+        self.assertIn("a", sd["ambas"])
+        self.assertIn("b", sd["solo_b"])
+        self.assertIn("antiguo", sd["solo_b"])
+        self.assertEqual(sd["solo_a"], [])
+        # metadata de nodos por sesión
+        self.assertGreaterEqual(sd["session_b"]["nodos"], 3)
+
+    def test_sin_2_sesiones_devuelve_none(self):
+        db = self.vault / "events-una.db"
+        conn = sqlite3.connect(str(db))
+        _db_events_schema(conn)
+        conn.execute(
+            "INSERT INTO events (session_id, ts, tool, params, exit_code) "
+            "VALUES ('sesion-unica', ?, 'traverse', ?, 0)",
+            (datetime.now(timezone.utc).isoformat(),
+             json.dumps({"slug": "conceptos/a"})),
+        )
+        conn.commit()
+        conn.close()
+        snap = self._run(db=str(db))
+        self.assertIsNone(snap["session_diff"])
+
+    def test_explicito_compara_sesiones_de_sistema(self):
+        db = self.vault / "events-sistema.db"
+        conn = sqlite3.connect(str(db))
+        _db_events_schema(conn)
+        now = datetime.now(timezone.utc).isoformat()
+        eventos = [
+            ("local", "conceptos/a", "traverse"),
+            ("local", "conceptos/b", "read"),
+            ("cron_x_20260101_000000", "conceptos/a", "traverse"),
+            ("cron_x_20260101_000000", "conceptos/c", "traverse"),
+        ]
+        for sid, slug, tool in eventos:
+            conn.execute(
+                "INSERT INTO events (session_id, ts, tool, params, exit_code) "
+                "VALUES (?, ?, ?, ?, 0)",
+                (sid, now, tool, json.dumps({"slug": slug})),
+            )
+        conn.commit()
+        conn.close()
+        # default: local y cron_* son sistema → sin candidatas → None
+        snap = self._run(db=str(db))
+        self.assertIsNone(snap["session_diff"])
+        # explícito: acepta sesiones de sistema para debug
+        snap = self._run(db=str(db),
+                         session_a="local", session_b="cron_x_20260101_000000")
+        sd = snap["session_diff"]
+        self.assertIsNotNone(sd)
+        self.assertEqual(sd["session_a"]["id"], "local")
+        self.assertEqual(sd["session_b"]["id"], "cron_x_20260101_000000")
+        self.assertEqual(sd["ambas"], ["a"])       # basename del slug
+        self.assertEqual(sd["solo_a"], ["b"])
+        self.assertEqual(sd["solo_b"], ["c"])
+
+    def test_normaliza_slug_y_target_misma_generacion(self):
+        # Dos generaciones de params conviven en la DB: server actual escribe
+        # params.slug ('decisions/x.md' → basename x), harness dsh escribía
+        # params.target ('y'). El diff debe matchear por basename entre ambas.
+        db = self.vault / "events-mixto.db"
+        conn = sqlite3.connect(str(db))
+        _db_events_schema(conn)
+        now = datetime.now(timezone.utc).isoformat()
+        eventos = [
+            # sesión moderna: slug con path → basename 'a', 'b'
+            ("moderna", "decisions/a.md", "traverse", "slug"),
+            ("moderna", "decisions/b.md", "read", "slug"),
+            # sesión legacy dsh: target sin path → basename 'a', 'c'
+            ("legacy", "a", "traverse", "target"),
+            ("legacy", "c", "read", "target"),
+        ]
+        for sid, ref, tool, campo in eventos:
+            conn.execute(
+                "INSERT INTO events (session_id, ts, tool, params, exit_code) "
+                "VALUES (?, ?, ?, ?, 0)",
+                (sid, now, f"okf_{tool}", json.dumps({campo: ref})),
+            )
+        conn.commit()
+        conn.close()
+        snap = self._run(db=str(db),
+                         session_a="moderna", session_b="legacy")
+        sd = snap["session_diff"]
+        self.assertIsNotNone(sd)
+        # 'a' aparece en ambas aunque una vino por slug y otra por target
+        self.assertEqual(sd["ambas"], ["a"])
+        self.assertEqual(sd["solo_a"], ["b"])
+        self.assertEqual(sd["solo_b"], ["c"])
+
+    def test_nodos_vacios_sin_eventos_de_navegacion(self):
+        db = self.vault / "events-vacios.db"
+        conn = sqlite3.connect(str(db))
+        _db_events_schema(conn)
+        now = datetime.now(timezone.utc).isoformat()
+        # search con slug NO cuenta como navegación para el diff (solo
+        # traverse/read) → sesiones sin nodos navegados
+        for sid in ("sa", "sb"):
+            conn.execute(
+                "INSERT INTO events (session_id, ts, tool, params, exit_code) "
+                "VALUES (?, ?, 'okf_search', ?, 0)",
+                (sid, now, json.dumps({"query": "algo", "slug": "conceptos/a"})),
+            )
+        conn.commit()
+        conn.close()
+        snap = self._run(db=str(db))
+        self.assertIsNone(snap["session_diff"])
 
 
 class TestTrendHelper(unittest.TestCase):

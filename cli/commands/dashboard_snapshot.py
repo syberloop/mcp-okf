@@ -46,6 +46,13 @@ TOP_VISITED_LIMIT = 10
 TOP_NEGLECTED_LIMIT = 10
 NEGLECTED_DAYS = 14
 
+# Sesiones de sistema que no representan una sesión cognitiva de agente
+# (cajón CLI sin id, comandos directos, watchdogs cron): se excluyen del
+# default automático de session_diff, pero se pueden pedir explícitamente.
+SYSTEM_SESSIONS_PREFIXES = ("cron_", "session-")
+SYSTEM_SESSIONS_EXACT = ("local", "cli")
+SESSION_DIFF_MIN_NODES = 2
+
 
 # ── Helpers de fecha ──
 
@@ -185,6 +192,139 @@ def _db_events(db_path):
             "top_visited": top_visited,
             "top_neglected": top_neglected,
             "entry_points_top3": entry_points,
+        }
+    except Exception:
+        return None
+
+
+# ── Session Diff (capa del DashboardView) ──
+
+def _is_system_session(session_id):
+    """True si el id corresponde a un canal de sistema, no a una sesión de
+    agente con identidad cognitiva (cajón CLI local, comandos directos,
+    watchdogs cron, UUIDs legacy del harness viejo)."""
+    if session_id in SYSTEM_SESSIONS_EXACT:
+        return True
+    return any(session_id.startswith(p) for p in SYSTEM_SESSIONS_PREFIXES)
+
+
+def _candidate_sessions(conn, limit=10):
+    """Sesiones de agente con navegación real (traverse/read con slug O
+    target), ordenadas por última actividad. Excluye canales de sistema: son
+    ruido para el diff (mezclan muchas sesiones o no tienen exploración
+    cognitiva).
+
+    Cuenta sobre events con COALESCE(slug, target) — dos generaciones de
+    params conviven en la DB (ver _session_nodes). v_node_events solo ve
+    slug y dejaría invisibles las sesiones del harness dsh.
+
+    Devuelve lista de dicts {session_id, nodos, eventos, ultimo_ts}.
+    """
+    rows = conn.execute(
+        """SELECT session_id,
+                  COUNT(DISTINCT COALESCE(json_extract(params, '$.slug'),
+                                          json_extract(params, '$.target'))) AS nodos,
+                  COUNT(*) AS eventos,
+                  MAX(ts) AS ultimo_ts
+           FROM events
+           WHERE tool IN ('okf_traverse','traverse','okf_read','read')
+             AND (json_extract(params, '$.slug') IS NOT NULL
+                  OR json_extract(params, '$.target') IS NOT NULL)
+           GROUP BY session_id
+           ORDER BY ultimo_ts DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "session_id": r["session_id"],
+            "nodos": r["nodos"],
+            "eventos": r["eventos"],
+            "ultimo_ts": r["ultimo_ts"],
+        }
+        for r in rows
+        if not _is_system_session(r["session_id"])
+    ]
+
+
+def _session_nodes(conn, session_id):
+    """Basenames de los nodos que la sesión atravesó o leyó.
+
+    Normaliza dos generaciones de params en la misma DB: el server actual
+    escribe params.slug ('frameworks/tp3-cibernetico') y el harness dsh
+    escribía params.target ('tp3-cibernetico'). Se reduce a basename (último
+    segmento) — misma semántica que analytics session_diff — para que el
+    diff funcione entre sesiones de cualquier generación y el grafo matchee
+    por filename (GraphAnimator.nodeMatches).
+    """
+    rows = conn.execute(
+        """SELECT COALESCE(json_extract(params, '$.slug'),
+                          json_extract(params, '$.target')) AS raw
+           FROM events
+           WHERE session_id = ? AND tool IN ('okf_traverse','traverse',
+                                             'okf_read','read')
+             AND (json_extract(params, '$.slug') IS NOT NULL
+                  OR json_extract(params, '$.target') IS NOT NULL)""",
+        (session_id,),
+    ).fetchall()
+    nodos = set()
+    for r in rows:
+        raw = (r["raw"] or "").strip()
+        if not raw:
+            continue
+        base = raw.rsplit("/", 1)[-1]
+        if base.endswith(".md"):
+            base = base[:-3]
+        nodos.add(base)
+    return nodos
+
+
+def _session_diff_section(db_path, session_a=None, session_b=None):
+    """Genera la sección session_diff del snapshot: nodos solo en A, solo en
+    B, y en ambas (slugs completos, listas ordenadas).
+
+    Selección de sesiones:
+      - session_a/session_b explícitos (flags --session-a/--session-b):
+        comparación pedida por el usuario. Acepta cualquier id, incluso de
+        sistema (local/cli/cron_*), para debug o comparaciones puntuales.
+      - sin flags: las 2 sesiones de agente más recientes con navegación
+        (excluye canales de sistema). Si no hay 2, devuelve None → la capa
+        Session Diff queda deshabilitada en el panel (sin datos, sin ruido).
+
+    Formato (contrato con dashboard_view.ts):
+      {session_a: {id, nodos}, session_b: {id, nodos},
+       solo_a: [slug...], solo_b: [slug...], ambas: [slug...]}
+    """
+    if not db_path or not Path(db_path).exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        if session_a and session_b:
+            a_id, b_id = session_a, session_b
+        else:
+            candidatos = _candidate_sessions(conn)
+            if len(candidatos) < 2:
+                conn.close()
+                return None
+            a_id = candidatos[0]["session_id"]
+            b_id = candidatos[1]["session_id"]
+
+        nodos_a = _session_nodes(conn, a_id)
+        nodos_b = _session_nodes(conn, b_id)
+        conn.close()
+
+        if not nodos_a and not nodos_b:
+            return None
+
+        solo_a = sorted(nodos_a - nodos_b)
+        solo_b = sorted(nodos_b - nodos_a)
+        ambas = sorted(nodos_a & nodos_b)
+        return {
+            "session_a": {"id": a_id, "nodos": len(nodos_a)},
+            "session_b": {"id": b_id, "nodos": len(nodos_b)},
+            "solo_a": solo_a,
+            "solo_b": solo_b,
+            "ambas": ambas,
         }
     except Exception:
         return None
@@ -486,7 +626,8 @@ def _conceptos_section(vault, stale_results):
 
 # ── Construcción del snapshot ──
 
-def _build_snapshot(vault, config=None, db_path=None, source="manual"):
+def _build_snapshot(vault, config=None, db_path=None, source="manual",
+                    session_a=None, session_b=None):
     """Construye el dict del snapshot con el schema del plan DashboardView."""
     from cli.commands.analytics import _resolve_db_path
     if db_path is None:
@@ -546,6 +687,12 @@ def _build_snapshot(vault, config=None, db_path=None, source="manual"):
     cibernetica["trend_7d"] = cyber_loops_abiertos_trend
     actividad["trend_7d"] = eventos_semana_trend
 
+    # ── Session Diff: nodos solo en A / solo en B / en ambas ──
+    # (capa del DashboardView; None sin 2 sesiones comparables → capa
+    # deshabilitada en el panel, sin datos no hay ruido visual)
+    session_diff = _session_diff_section(db_path, session_a=session_a,
+                                         session_b=session_b)
+
     snapshot = {
         "generated_at": datetime.now().astimezone().isoformat(),
         "generated_by": "cli dashboard-snapshot",
@@ -557,6 +704,7 @@ def _build_snapshot(vault, config=None, db_path=None, source="manual"):
         "calor_estructural": calor_estructural,
         "conceptos": conceptos,
         "negocio": None,  # fase 2 del plan: Umami API + D1, fuera del vault
+        "session_diff": session_diff,
         "tendencias": {
             "health_score_trend": health_score_trend,
             "eventos_semana_trend": eventos_semana_trend,
@@ -606,8 +754,12 @@ def run(args, vault, config=None):
     db_path = getattr(args, "db", None)
     source = getattr(args, "source", "manual")
     want_canvas = getattr(args, "canvas", False)
+    session_a = getattr(args, "session_a", None) or None
+    session_b = getattr(args, "session_b", None) or None
 
-    snapshot = _build_snapshot(vault, config=config, db_path=db_path, source=source)
+    snapshot = _build_snapshot(vault, config=config, db_path=db_path,
+                               source=source, session_a=session_a,
+                               session_b=session_b)
     today = _domain_today()
     dashboard_path, daily = _write_snapshot(vault, snapshot, today)
     print(f"  ✓ {dashboard_path.relative_to(vault)} "

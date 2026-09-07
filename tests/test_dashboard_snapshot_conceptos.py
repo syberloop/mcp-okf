@@ -199,9 +199,10 @@ class TestSchemaIntacto(ConceptosFixture):
             encoding="utf-8"))
         esperadas = {"generated_at", "generated_by", "source", "health", "graph",
                      "cibernetica", "actividad", "calor_estructural",
-                     "conceptos", "negocio", "tendencias"}
+                     "conceptos", "negocio", "session_diff", "tendencias"}
         self.assertEqual(set(snap.keys()), esperadas)
         self.assertIsNone(snap["negocio"])
+        self.assertIsNone(snap["session_diff"])  # sin db → capa deshabilitada
         for k in ("score", "max_score", "errors", "warnings"):
             self.assertIn(k, snap["health"])
         calor = snap["calor_estructural"]
