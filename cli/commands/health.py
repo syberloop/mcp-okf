@@ -273,7 +273,7 @@ def _check_scripts(vault, smoke_entry_point="tp3-cibernetico"):
         name = f"cli {' '.join(cmd_args)}"
         try:
             result = subprocess.run(
-                ["python3", "-m", "cli"] + cmd_args,
+                [sys.executable, "-m", "cli"] + cmd_args,
                 capture_output=True, text=True, timeout=timeout,
                 cwd=str(vault),
                 env={**os.environ,
