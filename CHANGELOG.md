@@ -4,6 +4,14 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-10] — v0.4.6
+
+### Fixed
+- **`new` generaba frontmatter inválido si el `title` o la `description` traían comillas dobles** (PR #18): interpolaba los valores entre comillas sin escapar, así que un concepto nuevo nacía ilegible — `edit` fallaba con `Invalid or missing frontmatter` sobre el archivo que el propio `new` acababa de crear, el health lo marcaba y el pre-commit bloqueaba el commit. Fix: `quote_yaml_scalar()` en `cli/frontmatter.py` (`json.dumps`, mismo criterio que `edit.py::_quote`), usada para `title`, `description` y `resource`. Se detectó creando un concepto cuya descripción citaba textualmente una decisión. Tests: 233.
+
+### Deuda anotada
+- La primitiva de quoting queda duplicada en `edit.py::_quote`, el escaping inline de `index.py` y el nuevo `quote_yaml_scalar`: `index.py` podría consumir el helper compartido.
+
 ## [2026-09-10] — v0.4.5
 
 ### Fixed
