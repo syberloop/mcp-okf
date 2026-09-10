@@ -64,6 +64,22 @@ def parse_frontmatter(text):
     return fm if fm else None, fm_text
 
 
+def quote_yaml_scalar(value: str) -> str:
+    """Serializa un string como escalar YAML double-quoted válido.
+
+    `json.dumps` produce escaping que es subconjunto válido del YAML
+    double-quoted: cubre comillas dobles, backslashes y saltos de línea. Sin
+    esto, un `title`/`description` con comillas internas genera frontmatter
+    inválido: el archivo queda ilegible para `edit` ("Invalid or missing
+    frontmatter") y para el health check.
+
+    Mismo criterio que `cli/commands/edit.py::_quote` (la duplicación de esta
+    primitiva en new/index/edit es deuda pendiente).
+    """
+    import json
+    return json.dumps(value, ensure_ascii=False)
+
+
 def validate_frontmatter(fields):
     """Validates that the frontmatter has the required fields.
 

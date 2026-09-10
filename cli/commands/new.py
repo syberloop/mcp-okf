@@ -6,6 +6,8 @@ import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from cli.frontmatter import quote_yaml_scalar
+
 # Types MECE permitidos — defaults (pisan por Config si existe .okf.config.yaml)
 VALID_TYPES = {
     "Sistema", "Agente", "Decision", "Plan", "Project", "Insight",
@@ -294,8 +296,8 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
     now = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%S-05:00")
 
     lines = ["---", f"type: {concept_type}"]
-    lines.append(f'title: "{title.strip()}"')
-    lines.append(f'description: "{description.strip()}"')
+    lines.append(f"title: {quote_yaml_scalar(title.strip())}")
+    lines.append(f"description: {quote_yaml_scalar(description.strip())}")
 
     if status:
         lines.append(f"status: {status}")
@@ -304,7 +306,7 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
         lines.append("status: pending")
 
     if resource:
-        lines.append(f'resource: "{resource}"')
+        lines.append(f"resource: {quote_yaml_scalar(resource)}")
 
     if tags:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
