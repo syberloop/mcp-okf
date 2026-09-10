@@ -104,6 +104,10 @@ def _ensure_db() -> None:
     if _db_path is None or _jsonl_dir is None or not _enabled:
         return
     _jsonl_dir.mkdir(parents=True, exist_ok=True)
+    # Igual que en server.py: el default del DB es ~/.hermes/cognitive-trace.db y
+    # en una máquina sin ese directorio el connect fallaba en silencio (el except
+    # de abajo lo tapaba y no se grababa ningún evento).
+    _db_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with sqlite3.connect(str(_db_path)) as conn:
             conn.executescript("""
