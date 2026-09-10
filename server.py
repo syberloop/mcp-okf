@@ -128,6 +128,10 @@ def _init_db() -> None:
     if DB_PATH is None or JSONL_DIR is None:
         return  # Cognitive Trace desactivado
     JSONL_DIR.mkdir(parents=True, exist_ok=True)
+    # El default de DB_PATH es ~/.hermes/cognitive-trace.db: en una máquina sin
+    # ese directorio (CI, instalación limpia) sqlite fallaba con "unable to open
+    # database file" y el import de server.py se caía entero.
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS events (

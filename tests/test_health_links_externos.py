@@ -20,6 +20,26 @@ def _write(path: Path, content: str):
     path.write_text(content, encoding="utf-8")
 
 
+def _apply_vault_config(vault: Path):
+    """Aplica la config del vault de prueba y devuelve el rollback.
+
+    `_check_indices` lee las exclusiones de los globales de `cli.vault`, que se
+    inyectan con `apply_config`. Sin esto el test dependía del config ambiente
+    (en CI no hay vault ni config global) y de que el proceso que corre la
+    suite lo haya dejado cargado — no hermético.
+    """
+    from cli import vault as vault_mod
+    from cli.config import Config
+
+    previos = (vault_mod.EXCLUDE_FILES, vault_mod.EXCLUDE_DIRS)
+    vault_mod.apply_config(Config(vault))
+
+    def rollback():
+        vault_mod.EXCLUDE_FILES, vault_mod.EXCLUDE_DIRS = previos
+
+    return rollback
+
+
 class HealthExternalLinksTest(unittest.TestCase):
     def setUp(self):
         from cli.commands.health import _check_broken_links, _check_indices
@@ -53,8 +73,13 @@ class HealthExternalLinksTest(unittest.TestCase):
 
     def test_index_bajo_dir_excluido_no_se_valida(self):
         vault = self.vault
-        # .dsh-build está en DEFAULT_EXCLUDE_DIRS: el indexer nunca lo toca.
-        # Un index.md stale ahí no debe reportarse.
+        # Config propia del vault de prueba: la exclusión de .dsh-build no puede
+        # depender del config ambiente, que en CI no existe.
+        _write(vault / ".okf.config.yaml", "exclude:\n  dirs:\n  - .dsh-build\n")
+        self.addCleanup(_apply_vault_config(vault))
+
+        # .dsh-build está excluido del régimen de índices: el indexer nunca lo
+        # toca. Un index.md stale ahí no debe reportarse.
         _write(vault / ".dsh-build" / "anidado" / "index.md",
                "---\ndescription: \"proyecto anidado no conceptos\"\n---\n\n# Anidado\n\n"
                "* [fantasma.md](fantasma.md)\n")
