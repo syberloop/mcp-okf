@@ -4,6 +4,20 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-10] — v0.4.7
+
+### Added
+- **Límites de crecimiento de la telemetría** (PR #19, contribución de @nefast325-tech): el `event_log.jsonl` crecía sin techo (28,2 MB en el vault) y `sistema/dashboard-snapshots/` sumaba un snapshot completo por día para siempre.
+  - `rotate_jsonl()` en `cli/telemetry.py`: al llegar a `JSONL_MAX_BYTES` (5 MB) el archivo se renombra a `<nombre>.1` (pisando el respaldo anterior) y el siguiente evento abre uno nuevo — en disco nunca hay más de ~2x el tope. Lo aplican los **dos** escritores (CLI y `server.py`).
+  - `_prune_snapshots()` en `dashboard_snapshot.py`: conserva 30 días de snapshots diarios (solo `YYYY-MM-DD.json` con fecha válida; cualquier otro archivo de la carpeta queda intacto) y se aplica en cada `_write_snapshot`.
+  - El plugin ya toleraba la rotación (detecta el achique y resetea el offset; el polling de 500 ms cubre el `fs.watch` sobre el inodo viejo) y el consumidor de snapshots lee exactamente los últimos 30 (`dashboard_view.ts` → `slice(-30)`), así que el 30 es coherente con quien lo consume. Verificado con el reader real del plugin antes del merge.
+  - Tests: 11 nuevos (rotación, respaldo único, los dos escritores sin huecos, retención y archivos ajenos).
+- **`readAll` por cola en el plugin** (PR #4 del repo `cognitive-trace`, misma tanda): la carga inicial pasó de leer el archivo entero (245 ms) a leer la cola (6 ms, 2,7% del archivo) con resultados idénticos. Acá no cambia código: el tope de 5 MB y la lectura por cola se complementan.
+
+### Deuda anotada
+- Los dos umbrales quedan hardcodeados: pasarlos a `.okf.config.yaml` es el issue **#20**.
+- Los snapshots diarios no están versionados (`.gitignore`), así que la poda es irreversible: 30 días es la única copia.
+
 ## [2026-09-10] — v0.4.6
 
 ### Fixed
