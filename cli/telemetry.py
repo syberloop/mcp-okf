@@ -130,19 +130,35 @@ def _ensure_db() -> None:
                 SELECT
                     session_id,
                     ts,
-                    CASE WHEN tool IN ('okf_traverse', 'traverse') THEN 'traverse'
-                         WHEN tool IN ('okf_read', 'read') THEN 'read'
-                         WHEN tool IN ('okf_search', 'search') THEN 'search'
-                         ELSE replace(tool, '-', '_') END AS tool_norm,
-                    json_extract(params, '$.slug') AS raw_node,
-                    CASE WHEN instr(json_extract(params, '$.slug'), '/') > 0
-                         THEN substr(json_extract(params, '$.slug'),
-                                     instr(json_extract(params, '$.slug'), '/') + 1)
-                         ELSE json_extract(params, '$.slug') END AS node,
-                    json_extract(params, '$.depth') AS depth,
+                    tool_norm,
+                    raw_node,
+                    CASE WHEN instr(raw_node, '/') > 0
+                         THEN substr(raw_node, instr(raw_node, '/') + 1)
+                         ELSE raw_node END AS node,
+                    depth,
                     exit_code
-                FROM events
-                WHERE json_extract(params, '$.slug') IS NOT NULL;
+                FROM (
+                    SELECT
+                        session_id,
+                        ts,
+                        CASE WHEN tool IN ('okf_traverse', 'traverse') THEN 'traverse'
+                             WHEN tool IN ('okf_read', 'read') THEN 'read'
+                             WHEN tool IN ('okf_search', 'search') THEN 'search'
+                             ELSE replace(tool, '-', '_') END AS tool_norm,
+                        -- El server guarda el nodo en params.slug; el CLI (argumento
+                        -- target de traverse y read) y el harness dsh, en
+                        -- params.target. target solo cuenta en traverse/read, igual
+                        -- que dashboard_snapshot._session_nodes: en validate es una
+                        -- ruta de archivo.
+                        COALESCE(json_extract(params, '$.slug'),
+                                 CASE WHEN tool IN ('okf_traverse', 'traverse',
+                                                    'okf_read', 'read')
+                                      THEN json_extract(params, '$.target') END) AS raw_node,
+                        json_extract(params, '$.depth') AS depth,
+                        exit_code
+                    FROM events
+                )
+                WHERE raw_node IS NOT NULL;
 
                 DROP VIEW IF EXISTS v_node_visits;
                 CREATE VIEW v_node_visits AS
