@@ -32,15 +32,20 @@ Notas de implementación:
 """
 
 import json
+import re
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from cli.frontmatter import parse_frontmatter
 from cli.vault import find_md_files
 
 SNAPSHOTS_DIR = Path("sistema") / "dashboard-snapshots"
+# Histórico diario: el panel lee los últimos 30 y las tendencias, el de hace 7
+# días. Lo anterior se borra en cada corrida (solo archivos YYYY-MM-DD.json).
+SNAPSHOT_RETENTION_DAYS = 30
+_SNAPSHOT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MAPAS_DIR = Path("sistema") / "mapas"
 TOP_VISITED_LIMIT = 10
 TOP_NEGLECTED_LIMIT = 10
@@ -728,7 +733,32 @@ def _write_snapshot(vault, snapshot, today):
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     daily = snapshots_dir / f"{today.isoformat()}.json"
     daily.write_text(payload, encoding="utf-8")
+    _prune_snapshots(snapshots_dir, today)
     return dashboard_path, daily
+
+
+def _prune_snapshots(snapshots_dir, today, keep_days=SNAPSHOT_RETENTION_DAYS):
+    """Borra los snapshots diarios de más de `keep_days` días (hoy incluido).
+
+    Solo considera archivos YYYY-MM-DD.json con fecha válida: cualquier otro
+    archivo de la carpeta queda intacto. Devuelve la lista de borrados.
+    """
+    limite = today - timedelta(days=keep_days - 1)
+    borrados = []
+    for f in sorted(snapshots_dir.glob("*.json")):
+        if not _SNAPSHOT_NAME.match(f.stem):
+            continue
+        try:
+            dia = date.fromisoformat(f.stem)
+        except ValueError:
+            continue
+        if dia < limite:
+            try:
+                f.unlink()
+                borrados.append(f)
+            except OSError:
+                pass
+    return borrados
 
 
 def _generate_heat_canvas(vault, snapshot, today):
