@@ -4,6 +4,16 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-10] — v0.4.10
+
+### Added
+- **La capa Cyber del plugin deja de estar muerta.** `cibernetica` ahora emite las cuatro listas por nodo que `dashboard_view.buildCyberNodes` esperaba desde el plan DashboardView y que el CLI nunca produjo: `review_on_vencidos_nodes`, `outcome_pending_nodes`, `outcome_success_nodes`, `outcome_failure_nodes`. El plugin las leía con `?? []`, así que la capa se renderizaba vacía sin error visible — el comentario del propio plugin decía «si el CLI las produce, la capa las colorea». Identificador: ruta relativa sin `.md`, igual que `conceptos[].file`. `review_on_vencidos_nodes` usa el mismo criterio que el agregado (`review_on < hoy`, sin mirar el outcome: un loop cerrado con fecha pasada también venció).
+- `tests/test_dashboard_cyber_nodes.py` (6 tests): cada lista consistente con su contador, formato del identificador, y presencia de las claves en el `dashboard.json` escrito.
+
+Tests: 287.
+
+---
+
 ## [2026-09-10] — v0.4.9
 
 ### Fixed

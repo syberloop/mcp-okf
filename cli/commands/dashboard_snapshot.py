@@ -436,6 +436,12 @@ def _cibernetica_section(vault):
     hoy no está roto: sigue en la lista de review y se cuenta aparte en
     review_on_hoy. loops_abiertos = outcome pendiente o sin medir;
     loops_cerrados = outcome success/failure.
+
+    Las listas ``*_nodes`` acompañan a cada contador con los nodos que lo
+    componen, para que la capa Cyber del plugin coloree el grafo
+    (dashboard_view.buildCyberNodes). Formato del identificador: la ruta
+    relativa sin ``.md``, igual que conceptos[].file. Son opcionales para el
+    plugin: si faltan, la capa queda vacía sin romper nada.
     """
     from cli.commands.review import collect_due
     due = collect_due(vault)
@@ -447,6 +453,10 @@ def _cibernetica_section(vault):
     outcome_success = 0
     outcome_failure = 0
     proximos_7d = 0
+    vencidos_nodes = []
+    outcome_pending_nodes = []
+    outcome_success_nodes = []
+    outcome_failure_nodes = []
 
     from cli.commands.review import get_today_str
     today = get_today_str()
@@ -464,16 +474,25 @@ def _cibernetica_section(vault):
         if not isinstance(cyber, dict):
             continue
         total_blocks += 1
+        rel = str(f.relative_to(vault))
+        slug = rel[:-3] if rel.endswith(".md") else rel
         outcome = str(cyber.get("outcome", ""))
         if outcome == "pending":
             outcome_pending += 1
+            outcome_pending_nodes.append(slug)
         elif outcome == "success":
             outcome_success += 1
+            outcome_success_nodes.append(slug)
         elif outcome == "failure":
             outcome_failure += 1
+            outcome_failure_nodes.append(slug)
         review_on = str(cyber.get("review_on", "") or "")
         if review_on and today < review_on <= limite:
             proximos_7d += 1
+        # Mismo criterio que el agregado: vencido = review_on < hoy, sin
+        # mirar el outcome (un loop cerrado con fecha pasada también venció).
+        if review_on and review_on < today:
+            vencidos_nodes.append(slug)
 
     loops_abiertos = outcome_pending + (total_blocks - outcome_pending
                                         - outcome_success - outcome_failure)
@@ -488,6 +507,10 @@ def _cibernetica_section(vault):
         "outcome_pending": outcome_pending,
         "outcome_success": outcome_success,
         "outcome_failure": outcome_failure,
+        "review_on_vencidos_nodes": sorted(vencidos_nodes),
+        "outcome_pending_nodes": sorted(outcome_pending_nodes),
+        "outcome_success_nodes": sorted(outcome_success_nodes),
+        "outcome_failure_nodes": sorted(outcome_failure_nodes),
     }
 
 
