@@ -4,6 +4,23 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-10] — v0.4.9
+
+### Fixed
+- **Un review que vence HOY ya no cuenta como vencido en ningún sensor** (#21 + complemento). Tres componentes usaban dos semánticas distintas para la misma fecha: `health` marcaba «expired — broken loop» con `review_on <= hoy` (el mismo día del vencimiento, desde las 00:00), el agregado `cibernetica.review_on_vencidos` contaba `severity == 'required'` (o sea también los de hoy) y en cambio `conceptos[].cyber.vencido` usaba `review_on < hoy`. Un concepto con `outcome: pending` y `review_on` igual a hoy producía un snapshot con 1 vencido en el agregado y 0 en el nodo.
+  - `health._check_cyber`: `review_on <= today` → `review_on < today` (#21). Loop roto pasa a significar vencido de verdad.
+  - `review.collect_due`: cada ítem expone `vencido` (`review_on < hoy`). La lista de `review` sigue devolviendo los que vencen hoy — son tareas de hoy — y `severity` (required/verify) queda ortogonal a `vencido`.
+  - `dashboard_snapshot`: `review_on_vencidos` cuenta `vencido`. Los que vencen hoy se cuentan aparte en la clave nueva `review_on_hoy` (aditiva; el plugin `cognitive-trace` ignora claves desconocidas, todavía no la renderiza).
+  - `review` en modo humano marca los ítems que vencen hoy (`⏰ vence hoy`).
+- Docstrings que afirmaban una semántica que el código no cumplía: `_cibernetica_section` («severity required = loop pendiente con fecha vencida») y `_cyber_por_nodo` («misma semántica que review.collect_due», falso para el caso «hoy»).
+
+### Added
+- `tests/test_review_vencimiento.py` (10 tests): fija la semántica única de fechas entre `collect_due`, el agregado del dashboard, el flag por nodo y la salida humana. Comprobado en las dos direcciones — con el agregado viejo fallan.
+
+Tests: 281.
+
+---
+
 ## [2026-09-10] — v0.4.8
 
 ### Added
