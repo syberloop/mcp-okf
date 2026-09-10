@@ -364,7 +364,7 @@ def _check_cyber(vault, excluded_cyber=None):
         if not outcome or outcome in ("", "None"):
             warnings.append(f"{rel}: cyber block: missing 'outcome'")
 
-        if outcome == "pending" and review_on and review_on <= today:
+        if outcome == "pending" and review_on and review_on < today:
             errors.append(f"{rel}: cyber.outcome=pending with review_on={review_on} "
                           f"expired — broken loop")
 
