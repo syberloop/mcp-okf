@@ -151,7 +151,7 @@ def _query_node_timeline(conn, limit, arg):
         return "[error] Requires --arg <slug> for node_timeline"
     node = arg.split("/")[-1]
     rows = conn.execute(
-        """SELECT ts, tool FROM v_node_events
+        """SELECT ts, tool_norm FROM v_node_events
            WHERE node = ?
            ORDER BY ts DESC LIMIT ?""",
         (node, limit),
@@ -160,7 +160,7 @@ def _query_node_timeline(conn, limit, arg):
         return f"(no data for '{arg}')"
     lines = [f"History of '{arg}':"]
     for r in rows:
-        lines.append(f"  {r['ts'][:19]} — {r['tool']}")
+        lines.append(f"  {r['ts'][:19]} — {r['tool_norm']}")
     return "\n".join(lines)
 
 
