@@ -430,13 +430,17 @@ def _graph_section(vault):
 def _cibernetica_section(vault):
     """Loops cibernéticos: bloques cyber, outcomes y review_on.
 
-    review_on_vencidos reusa review.collect_due (severity 'required' = loop
-    pendiente con fecha vencida). loops_abiertos = outcome pendiente o sin
-    medir; loops_cerrados = outcome success/failure.
+    review_on_vencidos cuenta SOLO los reviews ya vencidos (review_on < hoy):
+    reusa review.collect_due y su campo ``vencido`` — la misma semántica que
+    health (loop roto) y que conceptos[].cyber.vencido. Un review que vence
+    hoy no está roto: sigue en la lista de review y se cuenta aparte en
+    review_on_hoy. loops_abiertos = outcome pendiente o sin medir;
+    loops_cerrados = outcome success/failure.
     """
     from cli.commands.review import collect_due
     due = collect_due(vault)
-    vencidos = sum(1 for d in due if d["severity"] == "required")
+    vencidos = sum(1 for d in due if d["vencido"])
+    hoy = sum(1 for d in due if not d["vencido"])
 
     total_blocks = 0
     outcome_pending = 0
@@ -479,6 +483,7 @@ def _cibernetica_section(vault):
         "loops_cerrados": loops_cerrados,
         "loops_abiertos": loops_abiertos,
         "review_on_vencidos": vencidos,
+        "review_on_hoy": hoy,
         "review_on_proximos_7d": proximos_7d,
         "outcome_pending": outcome_pending,
         "outcome_success": outcome_success,
@@ -550,9 +555,11 @@ def _cyber_por_nodo(fm, today_iso):
     """Bloque cyber de un nodo normalizado para conceptos[].cyber.
 
     None si el frontmatter no tiene bloque cyber (o no es dict). vencido =
-    review_on existe y es anterior a hoy (comparación ISO, misma semántica
-    que review.collect_due). target_metric se reduce al nombre de la
-    métrica (el vault usa {name, target}).
+    review_on existe y es anterior a hoy (comparación ISO) — la misma
+    semántica que review.collect_due()[].vencido y que el agregado
+    cibernetica.review_on_vencidos; un review que vence hoy queda en False.
+    target_metric se reduce al nombre de la métrica (el vault usa
+    {name, target}).
     """
     cyber = fm.get("cyber")
     if not isinstance(cyber, dict):

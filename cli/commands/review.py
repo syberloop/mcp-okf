@@ -1,6 +1,14 @@
 """Command review — Cybernetic loop sensor.
 
 Scans concepts with cyber.review_on <= today and classifies by severity.
+
+Semántica de fechas (fijada 2026-09-10, tras el off-by-one de health):
+- ``review_on < hoy`` → **vencido**: el review pasó sin cerrarse. Es lo que
+  cuenta el dashboard (``review_on_vencidos``) y lo que health marca como
+  loop roto. Se expone por ítem en el campo ``vencido``.
+- ``review_on == hoy`` → **vence hoy**: sigue en la lista de tareas (hay que
+  actuar hoy) pero todavía no está roto. ``collect_due`` lo devuelve con
+  ``vencido: False``; el dashboard lo cuenta aparte (``review_on_hoy``).
 """
 
 import json
@@ -22,7 +30,12 @@ def get_today_str():
 
 
 def collect_due(vault):
-    """Finds concepts with cyber.review_on <= today."""
+    """Finds concepts with cyber.review_on <= today.
+
+    Cada ítem trae ``vencido`` (``review_on < hoy``): la lista incluye los que
+    vencen hoy porque son tareas de hoy, pero ``vencido`` los distingue para
+    quien necesite contar loops realmente rotos (dashboard, health).
+    """
     today = get_today_str()
     due = []
 
@@ -64,11 +77,17 @@ def collect_due(vault):
                 "severity": severity,
                 "outcome": outcome if outcome not in ("", "None") else "(unmeasured)",
                 "review_on": review_str,
+                "vencido": review_str < today,
                 "sensor": sensor,
                 "metric": metric_name,
             })
 
     return due
+
+
+def _marca_hoy(item):
+    """Sufijo para la salida humana: distingue «vence hoy» de «vencido»."""
+    return "" if item.get("vencido") else "  ⏰ vence hoy"
 
 
 def run(args, vault, config=None):
@@ -102,14 +121,16 @@ def run(args, vault, config=None):
                 for d in required:
                     print(f"   [{d['type']}] {d['file']}")
                     print(f"   Sensor: {d['sensor']} | Metric: {d['metric']}")
-                    print(f"   Outcome: {d['outcome']} | Review era: {d['review_on']}")
+                    print(f"   Outcome: {d['outcome']} | Review era: {d['review_on']}"
+                          f"{_marca_hoy(d)}")
                     print("")
 
             if verify:
                 print(f"🟡 Re-verify validity ({len(verify)}):")
                 for d in verify:
                     print(f"   [{d['type']}] {d['file']}")
-                    print(f"   Outcome actual: {d['outcome']} | Review era: {d['review_on']}")
+                    print(f"   Outcome actual: {d['outcome']} | Review era: {d['review_on']}"
+                          f"{_marca_hoy(d)}")
                     print(f"   Is this decision still valid?")
                     print("")
 
