@@ -32,6 +32,12 @@ _enabled: bool = True
 RESULT_NODES_CAP = 150
 RESULT_EDGES_CAP = 500  # las aristas de un traverse pueden exceder los nodos (multi-arista por par)
 
+# Tope del event_log.jsonl. El JSONL es el canal en vivo del plugin, que solo
+# usa los últimos eventos; el historial completo queda en SQLite. Al pasar el
+# tope, el archivo se renombra a <nombre>.1 (pisando el anterior) y el
+# siguiente evento abre uno nuevo: en disco nunca hay más de ~2 veces el tope.
+JSONL_MAX_BYTES = 5 * 1024 * 1024
+
 
 def init(vault: Path, config=None) -> None:
     """Initializes telemetry from configuration.
@@ -221,6 +227,24 @@ def _persist_sqlite(tool_name: str, params: dict, exit_code: int,
         pass
 
 
+def rotate_jsonl(path: Path, max_bytes: int | None = None) -> bool:
+    """Si `path` llegó al tope, lo renombra a `<path>.1` y devuelve True.
+
+    La usan los dos escritores del JSONL (este módulo y server.py). Es
+    best-effort, como el resto de la telemetría: si el archivo no existe o el
+    rename falla, no hace nada. El plugin ya tolera la rotación: cuando el
+    archivo se achica, vuelve a leerlo desde el principio.
+    """
+    limite = JSONL_MAX_BYTES if max_bytes is None else max_bytes
+    try:
+        if path.stat().st_size < limite:
+            return False
+        os.replace(path, path.with_name(path.name + ".1"))
+        return True
+    except OSError:
+        return False
+
+
 def _append_jsonl(event: dict) -> None:
     """Writes a JSON line to event_log.jsonl."""
     if _jsonl_path is None or not _enabled:
@@ -229,6 +253,7 @@ def _append_jsonl(event: dict) -> None:
         _jsonl_dir.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False) + "\n"
         with _jsonl_lock:
+            rotate_jsonl(_jsonl_path)
             with open(_jsonl_path, "a", encoding="utf-8") as f:
                 f.write(line)
     except Exception:
