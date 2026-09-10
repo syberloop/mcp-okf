@@ -4,6 +4,27 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-10] — v0.4.8
+
+### Added
+- **`new` puede fijar el nombre del archivo y omitir `title`/timestamps** (tarjeta t_d661f16d). El pipeline de resúmenes de sesión era imposible de ejecutar solo con MCP y terminaba escribiendo el `.md` a mano, violando la regla "EXCLUSIVAMENTE `mcp__okf__*`" del propio agente resumidor.
+  - `--filename <nombre>` (CLI) / `filename=` (MCP `okf_new`): usa el nombre exacto en vez de derivarlo del slug del título. Conserva mayúsculas, acentos y guiones bajos — antes `_slugify()` convertía `sesion-20260908_172301_5ef849fd` en `sesion-20260908-172301-5ef849fd`, así que la convención de `sesiones/` era inalcanzable. Acepta con o sin `.md`, exige un nombre simple (sin separadores de ruta: la carpeta la decide el type) y para `type=Skill` nombra el directorio de la skill.
+  - `--field key=value` en `new` (repetible, solo claves top-level): campos extra de frontmatter con el mismo dialecto que `edit --field` (JSON para listas/dicts) — es lo que permite escribir `session_id` en el alta.
+  - `--no-timestamps` (CLI) / `omit_timestamps=` (MCP): no escribe `timestamp:`/`created:`, para los formatos del vault que no los llevan. El health check 9 ya exime a `sesiones/` del warning de timestamp ausente.
+  - El alta completa (nombre exacto + frontmatter del contrato + body) sale en UNA llamada `okf_new`: `type='Sesion'`, `filename='sesion-<session_id>.md'`, `fields=['session_id=<session_id>']`, `omit_timestamps=True`, `description=`, `body=`.
+
+### Fixed
+- **`title` es opcional en `new`** (antes obligatorio en CLI y en el schema MCP) y, si se omite, ya no se escribe la clave `title:` (antes `--title ''` dejaba `title: ""`). Sin `--filename` ni título, `new` falla con un error explícito: antes creaba literalmente `<tipo>/.md`.
+- **`okf_new` valida `description`** con un mensaje claro en vez de delegar en el argparse del CLI.
+
+### Deuda anotada
+- `--field` en `new` solo acepta claves top-level y no admite claves repetidas; los bloques anidados siguen siendo territorio de `edit --field`.
+- `edit` no puede eliminar el `title` (no hay `--clear-title`), así que un concepto creado con título no puede migrar al formato sin title sin reescribirlo.
+
+Tests: 267.
+
+---
+
 ## [2026-09-10] — v0.4.7
 
 ### Added
