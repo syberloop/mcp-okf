@@ -86,5 +86,49 @@ class TestServerTodosTool(unittest.TestCase):
         self.assertEqual(args, ["search", "--todos", "--all", "--aging", "--json"])
 
 
+class TestServerNewTool(unittest.TestCase):
+    """`okf_new` debe pasar filename/fields/omit_timestamps al CLI."""
+
+    def test_new_omite_title_y_pasa_filename(self):
+        import server
+        from unittest.mock import patch
+        with patch.object(server, "_run", return_value="ok") as mock_run:
+            server.new(
+                type="Sesion",
+                description="resumen de prueba",
+                filename="sesion-20260908_172301_5ef849fd.md",
+                fields=["session_id=20260908_172301_5ef849fd"],
+                omit_timestamps=True,
+                tags="sesion,resumen",
+                status="aplicada",
+            )
+        args = mock_run.call_args[0][0]
+        self.assertNotIn("--title", args)
+        self.assertIn("--filename", args)
+        self.assertIn("sesion-20260908_172301_5ef849fd.md", args)
+        self.assertIn("--no-timestamps", args)
+        self.assertIn("--field", args)
+        self.assertIn("session_id=20260908_172301_5ef849fd", args)
+        params = mock_run.call_args[1]["params"]
+        self.assertFalse(params["title"])
+        self.assertTrue(params["omit_timestamps"])
+
+    def test_new_sigue_pasando_title_cuando_se_da(self):
+        import server
+        from unittest.mock import patch
+        with patch.object(server, "_run", return_value="ok") as mock_run:
+            server.new(type="Insight", title="Un titulo", description="una desc")
+        args = mock_run.call_args[0][0]
+        self.assertEqual(args, ["new", "--type", "Insight", "--title", "Un titulo",
+                                "--description", "una desc"])
+
+    def test_new_exige_description(self):
+        import server
+        with patch.object(server, "_run") as mock_run:
+            out = server.new(type="Sesion", filename="x.md")
+        self.assertIn("description is required", out)
+        mock_run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

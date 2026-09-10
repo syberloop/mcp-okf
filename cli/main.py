@@ -152,8 +152,26 @@ def build_parser():
     sp_new.add_argument("--type", dest="concept_type", required=True,
                         help="Tipo: Decision, Plan, Project, Insight, MarcoTeorico, "
                              "LeccionAprendida, Tool, Spec")
-    sp_new.add_argument("--title", required=True, help="Descriptive title")
+    sp_new.add_argument("--title", default=None,
+                        help="Descriptive title. Optional when --filename is "
+                             "given; when omitted, no 'title:' field is written "
+                             "(formats like the session summaries in "
+                             "sesiones/ have no title)")
     sp_new.add_argument("--description", required=True, help="One-line summary")
+    sp_new.add_argument("--filename", default=None,
+                        help="Exact file name to use instead of the title slug "
+                             "(e.g. --filename sesion-20260908_172301_5ef849fd.md, "
+                             "underscores preserved). '.md' is appended if "
+                             "missing. Must be a bare name, no path separators. "
+                             "For type=Skill it names the skill directory "
+                             "(SKILL.md stays fixed)")
+    sp_new.add_argument("--field", dest="fields", action="append", default=None,
+                        help="Extra frontmatter field 'key=value' (repeatable). "
+                             "Top-level only; use `edit --field` for nested keys")
+    sp_new.add_argument("--no-timestamps", dest="omit_timestamps",
+                        action="store_true", default=False,
+                        help="Do not write timestamp:/created: (formats that "
+                             "don't carry them, like the session summaries)")
     sp_new.add_argument("--tags", default=None, help="Comma-separated tags")
     sp_new.add_argument("--status", default=None,
                         help="Status: propuesta, aplicada, activo, etc.")

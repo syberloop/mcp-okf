@@ -250,6 +250,97 @@ def _slugify(text):
     return text
 
 
+def _validate_custom_filename(name):
+    """Validates a user-provided --filename.
+
+    Returns an error message (str), or None when the name is usable. The name
+    must be a bare file name inside the directory that the type dictates: no
+    path separators (the directory comes from --type, or from --entity /
+    --filename for Skill), no traversal, no hidden files.
+    """
+    if not name:
+        return "empty"
+    if name in (".", ".."):
+        return "the name cannot be '.' or '..'"
+    if "/" in name or "\\" in name:
+        return ("it must be a bare file name, without path separators "
+                "(the directory is chosen by the type)")
+    if name.startswith("."):
+        return "hidden files are not allowed"
+    if any(ord(c) < 32 for c in name):
+        return "control characters are not allowed"
+    return None
+
+
+# Claves que --field no puede fijar: tienen opción dedicada y duplicarlas
+# generaría frontmatter YAML inválido (dos veces la misma clave).
+RESERVED_FIELD_KEYS = {
+    "type", "title", "description", "tags", "status", "resource",
+    "timestamp", "created", "links", "cyber",
+}
+
+
+def _parse_extra_fields(field_specs):
+    """Parses repeatable --field 'key=value' specs into frontmatter lines.
+
+    Reuses the value parsing/serialization of `edit --field` (JSON for
+    containers, bool/int/float, plain string otherwise) so both commands speak
+    the same dialect. Only top-level keys: nested blocks belong to `edit`.
+
+    Returns:
+        list[str] | None: formatted frontmatter lines, or None on error
+        (the message is already printed to stderr).
+    """
+    if not field_specs:
+        return []
+    from cli.commands.edit import _fmt_list, _fmt_nested, _fmt_scalar, _parse_field_value
+
+    lines = []
+    seen = set()
+    for spec in field_specs:
+        if "=" not in spec:
+            print(f"❌ Invalid --field: '{spec}'. Use 'key=value'", file=sys.stderr)
+            return None
+        raw_key, raw_value = spec.split("=", 1)
+        key = raw_key.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", key):
+            print(
+                f"❌ Invalid --field key: '{key}'. Use letters, digits, '_' or '-' "
+                f"(starting with a letter or '_'); nested keys belong to "
+                f"`edit --field parent.child=...`",
+                file=sys.stderr,
+            )
+            return None
+        if key in RESERVED_FIELD_KEYS:
+            print(
+                f"❌ --field '{key}' is reserved: use the dedicated option "
+                f"(--type/--title/--description/--tags/--status/--resource)",
+                file=sys.stderr,
+            )
+            return None
+        if key in seen:
+            print(f"❌ Duplicate --field: '{key}'", file=sys.stderr)
+            return None
+        seen.add(key)
+
+        value = _parse_field_value(raw_value)
+        if value is None:
+            print(
+                f"❌ --field '{key}': empty value. `new` is create-only; "
+                f"use `edit --field {key}=` to clear a field",
+                file=sys.stderr,
+            )
+            return None
+        if isinstance(value, dict):
+            lines.append(f"{key}:")
+            lines.extend(_fmt_nested(value, 2))
+        elif isinstance(value, list):
+            lines.append(f"{key}: {_fmt_list(value)}")
+        else:
+            lines.append(f"{key}: {_fmt_scalar(value)}")
+    return lines
+
+
 def _parse_links(links):
     """Parse --link 'target:type' flags into a list of dicts.
 
@@ -283,11 +374,18 @@ def _parse_links(links):
 
 
 def _build_frontmatter(concept_type, title, description, status, resource, tags,
-                       cyber, links=None, config=None):
+                       cyber, links=None, config=None, omit_timestamps=False,
+                       extra_lines=None):
     """Generate the frontmatter YAML block.
 
     Args:
         links: list[dict] | None — list of {"target": str, "type": str}.
+        omit_timestamps: If True, skip `timestamp:`/`created:` (formats that
+            don't carry them — e.g. the session summaries in sesiones/, whose
+            format is part of the series contract; health check 9 already
+            exempts sesiones/ from the missing-timestamp warning).
+        extra_lines: list[str] | None — pre-formatted frontmatter lines from
+            `--field key=value`, inserted before the timestamps.
     """
     # Hora local de Colombia (UTC-5). datetime.now(timezone.utc) devuelve la hora
     # UTC; sin restar el offset el sello quedaba 5 horas en el futuro, porque se
@@ -296,7 +394,10 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
     now = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%S-05:00")
 
     lines = ["---", f"type: {concept_type}"]
-    lines.append(f"title: {quote_yaml_scalar(title.strip())}")
+    # title es opcional: hay formatos del vault (resúmenes de sesión) que no lo
+    # llevan. Sin title no se escribe la clave, en vez de escribir `title: ""`.
+    if title and str(title).strip():
+        lines.append(f"title: {quote_yaml_scalar(title.strip())}")
     lines.append(f"description: {quote_yaml_scalar(description.strip())}")
 
     if status:
@@ -312,8 +413,12 @@ def _build_frontmatter(concept_type, title, description, status, resource, tags,
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
         lines.append(f"tags: [{', '.join(tag_list)}]")
 
-    lines.append(f"timestamp: {now}")
-    lines.append(f"created: {now}")
+    if extra_lines:
+        lines.extend(extra_lines)
+
+    if not omit_timestamps:
+        lines.append(f"timestamp: {now}")
+        lines.append(f"created: {now}")
 
     # --- links: field (NUEVO) ---
     if links:
@@ -378,6 +483,8 @@ def run(args, vault, config=None):
     body_file = getattr(args, "body_file", None)
     links_raw = getattr(args, "links", None)
     entity = getattr(args, "entity", None)
+    filename_arg = (getattr(args, "filename", None) or "").strip()
+    omit_timestamps = bool(getattr(args, "omit_timestamps", False))
 
     # Resolver desde config o fallback a defaults
     valid_types = set(config.types_valid) if config else VALID_TYPES
@@ -389,13 +496,42 @@ def run(args, vault, config=None):
         print(f"   Valid: {', '.join(sorted(valid_types))}", file=sys.stderr)
         return 1
 
+    extra_lines = _parse_extra_fields(getattr(args, "fields", None))
+    if extra_lines is None:
+        return 1
+
+    # Nombre del archivo: --filename lo fija exacto (sin slugificar, para no
+    # romper convenciones con guiones bajos); si no, se deriva del slug del
+    # título. Sin ninguno de los dos no hay nombre posible.
+    title_clean = str(title).strip() if title else ""
+    slug = _slugify(title_clean)
+    stem = ""
+    if filename_arg:
+        err = _validate_custom_filename(filename_arg)
+        if err:
+            print(f"❌ Invalid --filename '{filename_arg}': {err}", file=sys.stderr)
+            return 1
+        stem = filename_arg[:-3] if filename_arg.lower().endswith(".md") else filename_arg
+        if not stem:
+            print(f"❌ Invalid --filename '{filename_arg}': missing name before '.md'",
+                  file=sys.stderr)
+            return 1
+    elif slug:
+        stem = slug
+    else:
+        print("❌ --title is required unless --filename is given.", file=sys.stderr)
+        print("   (the file name is derived from the title slug; --filename pins "
+              "the exact name, e.g. --filename sesion-20260908_172301_5ef849fd.md)",
+              file=sys.stderr)
+        return 1
+
     # Determinar directorio y nombre de archivo
     subdir = type_dir[concept_type]
-    slug = _slugify(title)
-    # Skill usa subdirectorio propio con SKILL.md (convención post-refactor)
+    # Skill usa subdirectorio propio con SKILL.md (convención post-refactor);
+    # ahí --filename nombra el directorio de la skill, no el archivo.
     if concept_type == "Skill":
         filename = "SKILL.md"
-        filepath = vault / subdir / slug / filename
+        filepath = vault / subdir / stem / filename
     elif concept_type in by_entity:
         # by_entity: un subdirectorio por instancia (decisión 2026-08-10).
         # Ej: type=Cliente entity=Lopcort → clientes/Lopcort/lopcort-com.md
@@ -411,10 +547,10 @@ def run(args, vault, config=None):
         if not entity_slug:
             print(f"❌ Invalid entity: '{entity}'", file=sys.stderr)
             return 1
-        filename = f"{slug}.md"
+        filename = f"{stem}.md"
         filepath = vault / subdir / entity_slug / filename
     else:
-        filename = f"{slug}.md"
+        filename = f"{stem}.md"
         filepath = vault / subdir / filename
 
     if filepath.exists():
@@ -499,7 +635,9 @@ def run(args, vault, config=None):
 
     frontmatter = _build_frontmatter(concept_type, title, description,
                                      status, resource, tags, cyber,
-                                     links=parsed_links, config=config)
+                                     links=parsed_links, config=config,
+                                     omit_timestamps=omit_timestamps,
+                                     extra_lines=extra_lines)
     if body_file:
         try:
             body_text = Path(body_file).read_text(encoding="utf-8")

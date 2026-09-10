@@ -787,14 +787,16 @@ def stale(json_output: bool = False) -> str:
 
 
 @mcp.tool()
-def new(type: str, title: str, description: str, tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "", links: str = "", entity: str = "") -> str:
+def new(type: str, title: str = "", description: str = "", tags: str = "", status: str = "", cyber: bool = False, dry_run: bool = False, body: str = "", links: str = "", entity: str = "", filename: str = "", fields: list | None = None, omit_timestamps: bool = False) -> str:
     """Creates a new concept in the OKF vault with consistent frontmatter.
 
     ALWAYS use this instead of write_file to create concepts.
 
     Args:
         type: Concept type (Decision, Plan, Project, Insight, MarcoTeorico, etc.)
-        title: Descriptive title
+        title: Descriptive title (optional when filename is given; if omitted,
+               no 'title:' field is written — formats like the session
+               summaries in sesiones/ have no title)
         description: One-line summary (required for navigability)
         tags: Comma-separated tags (optional)
         status: Initial status (propuesta, aplicada, etc.)
@@ -806,8 +808,28 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
         entity: Entity slug for by_entity types (e.g.: type=Cliente entity=Lopcort
                 → clientes/Lopcort/<slug>.md). Required when the type groups
                 by entity (types.by_entity in config).
+        filename: Exact file name instead of the title slug (e.g.
+                  'sesion-20260908_172301_5ef849fd.md' — underscores preserved).
+                  '.md' is appended if missing; must be a bare name (no path
+                  separators). For type=Skill it names the skill directory.
+        fields: Extra top-level frontmatter fields, 'key=value' each (e.g.
+                ['session_id=20260908_172301_5ef849fd']). Nested keys: use edit.
+        omit_timestamps: If True, do not write timestamp:/created: (formats that
+                         don't carry them, e.g. the session summaries).
     """
-    args = ["new", "--type", type, "--title", title, "--description", description]
+    if not description or not str(description).strip():
+        return "❌ description is required (vault policy: one-line summary)"
+    args = ["new", "--type", type]
+    if title:
+        args += ["--title", title]
+    args += ["--description", description]
+    if filename:
+        args += ["--filename", filename]
+    if fields:
+        for field in fields:
+            args += ["--field", str(field)]
+    if omit_timestamps:
+        args.append("--no-timestamps")
     if tags:
         args += ["--tags", tags]
     if status:
@@ -830,6 +852,9 @@ def new(type: str, title: str, description: str, tags: str = "", status: str = "
         "tags": tags, "status": status, "cyber": cyber, "dry_run": dry_run,
         "body": body[:100] + "..." if len(body) > 100 else body,
         "links": links if links else None,
+        "filename": filename if filename else None,
+        "fields": fields if fields else None,
+        "omit_timestamps": omit_timestamps,
     })
 
 
