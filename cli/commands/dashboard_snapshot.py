@@ -214,9 +214,9 @@ def _candidate_sessions(conn, limit=10):
     ruido para el diff (mezclan muchas sesiones o no tienen exploración
     cognitiva).
 
-    Cuenta sobre events con COALESCE(slug, target) — dos generaciones de
-    params conviven en la DB (ver _session_nodes). v_node_events solo ve
-    slug y dejaría invisibles las sesiones del harness dsh.
+    Cuenta sobre events con COALESCE(slug, target) — dos formas de params
+    conviven en la DB (ver _session_nodes). v_node_events aplica el mismo
+    criterio (ver cli/telemetry.py).
 
     Devuelve lista de dicts {session_id, nodos, eventos, ultimo_ts}.
     """
@@ -249,9 +249,10 @@ def _candidate_sessions(conn, limit=10):
 def _session_nodes(conn, session_id):
     """Basenames de los nodos que la sesión atravesó o leyó.
 
-    Normaliza dos generaciones de params en la misma DB: el server actual
-    escribe params.slug ('frameworks/tp3-cibernetico') y el harness dsh
-    escribía params.target ('tp3-cibernetico'). Se reduce a basename (último
+    Normaliza dos formas de params en la misma DB: el server escribe
+    params.slug ('frameworks/tp3-cibernetico'); el CLI (argumento target de
+    traverse y read) y el harness dsh escriben params.target
+    ('tp3-cibernetico'). Se reduce a basename (último
     segmento) — misma semántica que analytics session_diff — para que el
     diff funcione entre sesiones de cualquier generación y el grafo matchee
     por filename (GraphAnimator.nodeMatches).
