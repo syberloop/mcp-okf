@@ -4,6 +4,22 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-10] — v0.4.5
+
+### Fixed
+- **`v_node_events` no veía los `traverse` y `read` del CLI** (PR #13, contribución de @nefast325-tech): el server guarda el nodo en `params.slug` y el CLI (`traverse`/`read` con argumento posicional) y el harness dsh lo guardan en `params.target`; la vista solo leía `slug`, así que esos eventos nunca llegaban a `v_node_visits`. Ahora `COALESCE(slug, target)` con `target` aceptado solo en `traverse`/`read` (en `validate` es una ruta de archivo), en las **dos** definiciones de la vista (`cli/telemetry.py` y `server.py`). Medido sobre el `trace.db` del vault (17.587 eventos): +787 eventos visibles y `most_visited` deja de estar en blanco. Sin migración (`DROP VIEW IF EXISTS` al iniciar) y sin cambio de columnas.
+- **`analytics node_timeline` fallaba siempre** (PR #16, issue #14): `SELECT ts, tool FROM v_node_events` sobre una vista que expone `tool_norm` → `sqlite3.OperationalError: no such column: tool` con cualquier argumento, y el render leía la misma clave inexistente.
+- **`server.py` no era importable en una máquina sin `~/.hermes`** (PR #17): `_init_db()` corre en el import y el DB default es `~/.hermes/cognitive-trace.db` → `unable to open database file`, con el import de `server` cayéndose entero (2 módulos de tests no cargaban en CI). Se crea el directorio padre, igual que ya se hacía con el JSONL. Mismo arreglo en `cli/telemetry.py`, donde el `except` tapaba el fallo y **los eventos no se grababan** en una instalación limpia.
+- **Test no hermético** `test_index_bajo_dir_excluido_no_se_valida` (PR #17): dependía del config ambiente (el vault real excluye `.dsh-build`). Ahora escribe su propio `.okf.config.yaml` y restaura los globales de `cli.vault`.
+
+### Added
+- **CI** (PR #17): GitHub Action en cada push a `master` y en cada PR, matriz 3.11/3.12 — `pip install -e .`, sanity check del CLI y `unittest discover` (227 tests). Antes los PRs se mergeaban sin ningún check automático, incluido el #13 de un contribuidor externo. El propio PR del workflow expuso los dos bugs de arriba.
+
+### Version
+- Se alinea el bump olvidado de **0.4.4**: el CHANGELOG lo documentaba (2026-08-29) pero `__version__` seguía en 0.4.3, así que `pip show`/`cli --version` reportaban una versión que no era la publicada.
+
+Tests: 227.
+
 ## [2026-08-29] — v0.4.4
 
 ### Fixed
