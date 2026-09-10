@@ -66,6 +66,8 @@ _config = Config(VAULT)
 # Inyectar exclusiones en vault.py
 from cli.vault import apply_config
 apply_config(_config)
+# Rotación del event_log.jsonl: la misma política que aplica el CLI
+from cli.telemetry import rotate_jsonl
 
 # Persistencia Cognitive Trace (feature flag)
 if _config.features_cognitive_trace:
@@ -263,6 +265,7 @@ def _append_jsonl(event: dict) -> None:
         JSONL_DIR.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False) + "\n"
         with JSONL_LOCK:
+            rotate_jsonl(JSONL_PATH)
             with open(JSONL_PATH, "a", encoding="utf-8") as f:
                 f.write(line)
     except Exception:
