@@ -351,13 +351,52 @@ if $WITH_COGNITIVE_TRACE && ! $MODE_UPDATE; then
             fi
         fi
         echo ""
-        echo "  To enable in Obsidian:"
-        echo "    1. Open Obsidian → Settings → Community Plugins"
-        echo "    2. Enable 'Cognitive Trace'"
-        echo "    3. Verify: python3 -m cli analytics"
+        # Habilitar el plugin: Obsidian solo carga los ids presentes en
+        # community-plugins.json. Sin esto el plugin queda instalado en disco
+        # y en la UI no aparece nada (bug real: vault skynet, 2026-09-11).
+        CP_FILE="$VAULT/.obsidian/community-plugins.json"
+        if $DRY_RUN; then
+            echo -e "  ${YELLOW}[dry-run]${NC} agregar 'cognitive-trace' a $CP_FILE"
+        elif python3 - "$CP_FILE" <<'PYMERGE'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+try:
+    current = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(current, list):
+        current = []
+except Exception:
+    current = []
+if "cognitive-trace" in current:
+    print("  already")
+else:
+    current.append("cognitive-trace")
+    p.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    print("  added")
+PYMERGE
+        then
+            echo -e "  ${GREEN}✓${NC} Plugin habilitado en community-plugins.json"
+        else
+            echo -e "  ${YELLOW}⚠${NC}  No se pudo escribir community-plugins.json — habilitalo a mano en la UI"
+        fi
         echo ""
-        echo "  The plugin reads event_log.jsonl from the plugin directory"
-        echo "  and renders traversals, reads, and decisions over time."
+        # El modo restringido (restricted/safe mode) es un interruptor POR VAULT que
+        # NO vive en .obsidian/ y NO se puede tocar desde acá: con él encendido
+        # Obsidian ignora TODOS los plugins de la comunidad, aunque estén instalados
+        # y figuren habilitados. Es exactamente el síntoma "lo instalé y no se ve nada"
+        # (vault skynet, 2026-09-11). Obsidian 1.12+ sí lo expone vía su CLI, que
+        # resuelve la ventana por el cwd — hay que pararse DENTRO del vault:
+        echo -e "  ${YELLOW}⚠${NC}  Si en Obsidian no ves el plugin, revisá el MODO RESTRINGIDO:"
+        echo "     Ajustes → Plugins de la comunidad → 'Desactivar modo restringido'"
+        echo "     o, con el vault abierto y el CLI de Obsidian disponible:"
+        echo "       cd \"$VAULT\" && obsidian plugins:restrict off && obsidian plugin:reload id=cognitive-trace"
+        echo ""
+        echo "  Para ver algo, abrí el panel (el plugin no tiene UI permanente):"
+        echo "     Ctrl+P → 'Cognitive Trace: Open Cognitive Trace timeline' / 'Dashboard OKF: abrir panel'"
+        echo "     o los íconos de la barra lateral izquierda (activity / gauge)."
+        echo ""
+        echo "  El plugin lee event_log.jsonl del directorio del plugin y dibuja"
+        echo "  traversals, reads y decisiones sobre el grafo."
     else
         echo -e "  ${YELLOW}⚠${NC}  No .obsidian/ directory found in this vault."
         echo "  Cognitive Trace requires an Obsidian vault to visualize events."
