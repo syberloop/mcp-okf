@@ -4,6 +4,16 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-11] — v0.4.11
+
+### Fixed
+- **El index raíz ya no enlaza carpetas que no tienen `index.md`** (#22). `_generate_root_index` recorría toda carpeta de primer nivel (`_find_all_content_dirs`) y le escribía un enlace a `<carpeta>/index.md`, existiera o no; pero `index` sólo genera índices para las carpetas con conceptos (`_find_concept_dirs`). Una carpeta sin conceptos —un export, una captura, un respaldo— quedaba anunciada en el índice raíz con un enlace muerto, y en silencio: el aviso `MISSING DESCRIPTION` sólo se imprime cuando el `index.md` existe, y `health` no mira los enlaces markdown de los índices, sólo los wikilinks. Ahora una carpeta se lista únicamente si tiene `index.md` — a esa altura del `run` (paso 2) ese es exactamente el conjunto que `index` maneja. Una carpeta con `index.md` escrito a mano y sin conceptos se sigue listando igual que antes.
+- `tests/test_index_raiz_sin_enlaces_muertos.py` (3 tests): todo enlace del index raíz apunta a un archivo que existe; una carpeta sin conceptos no aparece; una carpeta con `index.md` a mano se sigue listando. RED sobre master: 2 de los 3 fallan.
+
+Tests: 290.
+
+---
+
 ## [2026-09-10] — v0.4.10
 
 ### Added
