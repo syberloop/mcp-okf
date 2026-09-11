@@ -221,6 +221,10 @@ def _generate_root_index(vault):
         "", "## Sub-directorios", "",
     ]
     for dname in all_dirs:
+        # Sin index.md no hay a dónde enlazar: `index` sólo genera índices para
+        # carpetas con conceptos, y cuando llega acá ya los generó (paso 1 de run).
+        if not (vault / dname / "index.md").exists():
+            continue
         desc = _get_dir_description(vault, dname)
         if desc:
             lines.append(f"* [{dname}/]({dname}/index.md) - {desc}")
