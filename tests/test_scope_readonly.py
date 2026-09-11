@@ -359,6 +359,12 @@ class ReadFindFileTest(BaseVaultTest):
         self.assertIsNone(read_cmd._find_file("secreto", self.vault))
         self.assertEqual(read_cmd._find_file("doral-suite", self.vault),
                          self.vault / "publico" / "doral-suite.md")
+        # El path que `read` imprime (relativo al vault) se puede volver a pasar
+        self.assertEqual(read_cmd._find_file("publico/doral-suite", self.vault),
+                         self.vault / "publico" / "doral-suite.md")
+        self.assertEqual(read_cmd._find_file("publico/doral-suite.md", self.vault),
+                         self.vault / "publico" / "doral-suite.md")
+        self.assertIsNone(read_cmd._find_file("decisions/precio-secreto", self.vault))
         self.assertIsNone(read_cmd._find_file("no-existe-jamas", self.vault))
 
 

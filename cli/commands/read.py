@@ -17,7 +17,15 @@ def _find_file(target, vault):
     target = str(target).strip()
     roots = [scope_root(vault)]
 
-    # 1) Coincidencia exacta por ruta relativa (dentro del scope)
+    # 0) Ruta relativa al VAULT, si cae dentro del scope. Con scope, `read` y
+    #    `traverse` deben aceptar el mismo slug: `read` imprime el path
+    #    relativo al vault ("publico/x.md") y el agente lo vuelve a pasar tal
+    #    cual — sin esto, el eco de una lectura no sirve como entrada.
+    candidato_vault = vault / target
+    if candidato_vault.is_file() and in_scope_file(candidato_vault, vault):
+        return candidato_vault
+
+    # 1) Coincidencia exacta por ruta relativa al scope
     for root in roots:
         for cand in (root / target,
                      root / (target if target.endswith(".md") else target + ".md")):
