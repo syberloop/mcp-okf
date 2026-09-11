@@ -76,8 +76,26 @@ apply_config(_config)
 #   público no debe verlas en su toolset (además de fallar si las invocara).
 from cli.access import is_readonly, normalize_scope
 
-_READONLY = is_readonly()
-_SCOPE = normalize_scope(os.environ.get("OKF_SCOPE", ""))
+
+def _argv_value(flag):
+    """Valor de un flag propio del server (--flag valor | --flag=valor), o None."""
+    prefix = flag + "="
+    for i, arg in enumerate(sys.argv):
+        if arg == flag and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if arg.startswith(prefix):
+            return arg[len(prefix):]
+    return None
+
+
+# La política de acceso se puede fijar por ARGUMENTO (--scope / --readonly) o por
+# entorno. El argumento gana. Motivo: si el entorno no se propaga al subproceso
+# MCP, un control que solo vive en env desaparece en silencio y la instancia
+# queda SIN alcance (fail-open) — el peor modo de falla para un control de
+# acceso. Por eso, en la práctica, se pinea por argv en el config del perfil:
+#   args: [server.py, --vault, /opt/data/vault, --scope, publico, --readonly]
+_READONLY = ("--readonly" in sys.argv) or is_readonly()
+_SCOPE = normalize_scope(_argv_value("--scope") or os.environ.get("OKF_SCOPE", ""))
 if _SCOPE:
     CLI += ["--scope", _SCOPE]
 

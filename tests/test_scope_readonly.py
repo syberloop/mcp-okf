@@ -196,7 +196,7 @@ class ModoSoloLecturaTest(BaseVaultTest):
 class ServidorModoPublicoTest(BaseVaultTest):
     """El server propaga el scope al CLI y no registra las tools de escritura."""
 
-    def _server_info(self, extra_env=None):
+    def _server_info(self, extra_env=None, extra_args=(), extra_script=""):
         """Importa server.py en un subproceso y devuelve CLI + tools registradas."""
         env = dict(os.environ)
         env["PYTHONPATH"] = f"{REPO}:{os.environ.get('PYTHONPATH', '')}"
@@ -209,9 +209,13 @@ class ServidorModoPublicoTest(BaseVaultTest):
             "print(json.dumps({\n"
             "  'cli': server.CLI,\n"
             "  'tools': sorted(t.name for t in server.mcp._tool_manager.list_tools()),\n"
-            "}))\n"
+            "  'scope': server._SCOPE,\n"
+            "  'readonly': server._READONLY,\n"
+            "}))\n" + extra_script
         )
-        result = subprocess.run([sys.executable, "-c", code], capture_output=True,
+        argv = [sys.executable, "-c", code]
+        argv += list(extra_args)
+        result = subprocess.run(argv, capture_output=True,
                                 text=True, env=env, cwd=str(REPO))
         self.assertEqual(result.returncode, 0, result.stderr)
         import json
@@ -235,6 +239,35 @@ class ServidorModoPublicoTest(BaseVaultTest):
         for tool in ("new", "edit", "index", "touch", "canvas", "graph_command",
                      "analytics", "trace", "graph_suggest_edge_types"):
             self.assertNotIn(tool, info["tools"])
+
+    # ── Política por ARGUMENTO (lo que se pinea en el config del perfil) ──
+    # El alcance declarado por argv no depende de que el entorno se propague al
+    # subproceso MCP: si el env se perdiera, la instancia quedaría SIN alcance
+    # (fail-open) y el agente público vería el vault entero.
+
+    def test_scope_por_argumento_se_propaga_al_cli(self):
+        info = self._server_info(extra_args=["--scope", "publico"])
+        self.assertEqual(info["scope"], "publico")
+        self.assertEqual(info["cli"][info["cli"].index("--scope") + 1], "publico")
+
+    def test_scope_por_argumento_acepta_la_forma_con_igual(self):
+        info = self._server_info(extra_args=["--scope=publico"])
+        self.assertEqual(info["scope"], "publico")
+        self.assertIn("publico", info["cli"])
+
+    def test_readonly_por_argumento_no_registra_tools_de_escritura(self):
+        info = self._server_info(extra_args=["--scope", "publico", "--readonly"])
+        self.assertTrue(info["readonly"])
+        self.assertIn("read", info["tools"])
+        for tool in ("new", "edit", "index", "touch", "canvas", "graph_command",
+                     "analytics", "trace", "graph_suggest_edge_types"):
+            self.assertNotIn(tool, info["tools"])
+
+    def test_el_argumento_gana_sobre_el_entorno(self):
+        info = self._server_info(extra_env={"OKF_SCOPE": "otro"},
+                                 extra_args=["--scope", "publico"])
+        self.assertEqual(info["scope"], "publico")
+        self.assertNotIn("otro", info["cli"])
 
 
 class AccessModuleTest(unittest.TestCase):
