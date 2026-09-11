@@ -319,17 +319,34 @@ if $WITH_COGNITIVE_TRACE && ! $MODE_UPDATE; then
         else
             echo "  Cloning the plugin (https://github.com/syberloop/cognitive-trace)..."
             mkdir -p "$VAULT/.obsidian/plugins"
-            git clone --depth 1 https://github.com/syberloop/cognitive-trace.git "$PLUGIN_DIR" 2>&1 | tail -2
-            if [ -d "$PLUGIN_DIR" ]; then
-                echo -e "  ${GREEN}✓${NC} Plugin cloned to $PLUGIN_DIR"
+            # El directorio puede existir ya SIN el plugin: la telemetría del MCP
+            # escribe event_log.jsonl / trace.db ahí en cuanto el vault se usa
+            # (server.py: JSONL_DIR = <vault>/.obsidian/plugins/cognitive-trace),
+            # así que en un vault usado el dir está no-vacío y `git clone` sobre
+            # él aborta ("already exists and is not an empty directory").
+            # Se clona aparte y se copia encima: los datos de runtime se preservan.
+            CT_TMP="$(mktemp -d)"
+            if git clone --depth 1 https://github.com/syberloop/cognitive-trace.git "$CT_TMP" 2>&1 | tail -2; then
+                mkdir -p "$PLUGIN_DIR"
+                cp -R "$CT_TMP/." "$PLUGIN_DIR/"
+                rm -rf "$CT_TMP"
+                echo -e "  ${GREEN}✓${NC} Plugin installed at $PLUGIN_DIR"
                 if command -v npm &>/dev/null; then
                     echo "  Building main.js (npm install + npm run build)..."
-                    (cd "$PLUGIN_DIR" && npm install --silent && npm run build 2>&1 | tail -2)
-                    echo -e "  ${GREEN}✓${NC} main.js built"
+                    (cd "$PLUGIN_DIR" && npm install --silent && npm run build 2>&1 | tail -2) \
+                        || echo -e "  ${YELLOW}⚠${NC}  Build failed — run 'npm install && npm run build' in $PLUGIN_DIR"
                 else
                     echo -e "  ${YELLOW}⚠${NC}  npm not found — run 'npm install && npm run build' in $PLUGIN_DIR"
                 fi
+                # Obsidian necesita los tres artefactos; sin main.js el plugin
+                # aparece instalado pero no carga.
+                if [ -f "$PLUGIN_DIR/main.js" ] && [ -f "$PLUGIN_DIR/styles.css" ]; then
+                    echo -e "  ${GREEN}✓${NC} manifest.json + main.js + styles.css presentes"
+                else
+                    echo -e "  ${YELLOW}⚠${NC}  Falta main.js o styles.css — el plugin no va a cargar en Obsidian"
+                fi
             else
+                rm -rf "$CT_TMP"
                 echo -e "  ${RED}Error: clone failed.${NC}"
             fi
         fi
