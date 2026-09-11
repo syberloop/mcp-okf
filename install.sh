@@ -452,13 +452,28 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: okf-dashboard-snapshot
+        name: OKF Dashboard snapshot
+        description: dashboard.json + daily snapshot for the Cognitive Trace DashboardView (never blocks the commit)
+        entry: bash -c 'python3 -m cli --vault "$VAULT" dashboard-snapshot --source post-commit-hook || true'
+        language: system
+        pass_filenames: false
+        always_run: true
 PRECOMMIT
         echo -e "  ${GREEN}✓${NC} Created $HOOKS_FILE (vault: $VAULT)"
+        # dashboard-snapshot reescribe dashboard.json y sistema/dashboard-snapshots/
+        # en cada commit: no se versionan (mismo criterio que el vault del sistema).
+        GITIGNORE="$VAULT/.gitignore"
+        if [ -s "$GITIGNORE" ] && [ -n "$(tail -c1 "$GITIGNORE")" ]; then echo >> "$GITIGNORE"; fi
+        for REGLA in "/dashboard.json" "/sistema/dashboard-snapshots/"; do
+            grep -qxF "$REGLA" "$GITIGNORE" 2>/dev/null || echo "$REGLA" >> "$GITIGNORE"
+        done
         echo ""
         echo "  To activate:"
         echo "    cd $VAULT && pre-commit install"
         echo ""
-        echo "  Hooks run before every commit: validate → index → health."
+        echo "  Hooks run before every commit: validate → index → health → dashboard-snapshot."
         echo "  Install pre-commit: pip install pre-commit"
     fi
 fi
