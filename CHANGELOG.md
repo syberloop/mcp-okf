@@ -4,6 +4,20 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-17] — v0.4.12
+
+### Fixed
+- **La densidad del grafo deja de vetar los commits** (#26). `_check_graph` metía `low density` en el mismo bucket de warnings que los huérfanos, y con `health --strict` —el comando que corre el pre-commit de un vault de cliente— cualquier warning aborta el commit. La densidad es `aristas / (n·(n−1))`: el denominador crece con n² y las aristas con n, así que **decae sola** a medida que el vault crece. Sostener 0.05 exige ~5 enlaces por concepto a los 100 nodos y ~10 a los 200: cualquier vault que crezca termina bajo el umbral haga lo que haga. Es un KPI de forma del portafolio, no un defecto del vault, y un KPI no puede tener poder de veto sobre los commits. Ahora se informa (línea impresa del check de grafo, que ya ganó la densidad, y `graph.density` del JSON) sin bloquear. **Los huérfanos siguen siendo warning y siguen bloqueando**: el test lo fija explícitamente para que una corrección futura no los arrastre.
+- Caso real medido: vault del cliente Skynet, 79 nodos / 310 aristas, densidad **0.0503** — al filo del umbral histórico. Su `git log` muestra el bloqueo: último commit 15-sep 17:09, siguiente 17-sep 15:56. Un nodo nuevo con una sola arista lo deja en 0.0492 y bloquea otra vez. Con el fix, `health --strict` sobre ese vault devuelve **exit 0** sin perder el número.
+- `tests/test_health_densidad_no_bloquea.py` (3 tests): densidad bajo el umbral → sin warning; la densidad se sigue reportando; **un huérfano sigue siendo warning**. Fixture: 25 conceptos encadenados → densidad `1/n` = 0.040 con 0 huérfanos. RED sobre master: 1 de 3 falla.
+
+### Known issue (fuera de alcance)
+- El bucket de warnings sigue mezclando **defectos** con **KPIs**: la densidad salió, pero `description too short (<15 chars)` sigue ahí con poder de veto. Esta es la **tercera** vez que un no-defecto escala por `--strict` hasta bloquear commits enteros (antes: `cyber review_on` vencido, `timestamp↔git` de archivos sin commitear). Ver el issue abierto por la separación `errors` / `warnings` / `info`.
+
+Tests: 293.
+
+---
+
 ## [2026-09-11] — v0.4.11
 
 ### Fixed
