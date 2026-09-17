@@ -543,14 +543,20 @@ def _check_version(vault):
     Decision en el vault). Si no hay red o el repo no tiene releases, reporta
     'no verificable' sin romper el health.
 
+    OJO: que la version local sea MAYOR que la ultima release publicada no
+    significa "al dia" — significa que el feed de releases quedo atras y no
+    puede verificar nada. Son dos estados distintos y se reportan distinto
+    (`ahead`), para que la linea no afirme una verificacion que no hizo.
+
     Returns:
         dict: {"local": str, "latest": str|None, "up_to_date": bool|None,
-               "source": str}
+               "ahead": bool|None, "source": str}
     """
     from cli import __version__
     local = __version__
     latest = None
     up_to_date = None
+    ahead = None
 
     try:
         import json as _json
@@ -568,12 +574,13 @@ def _check_version(vault):
         if latest:
             def _key(v):
                 return tuple(int(x) for x in re.findall(r"\d+", v)[:3] or [0])
-            up_to_date = _key(local) >= _key(latest)
+            up_to_date = _key(local) == _key(latest)
+            ahead = _key(local) > _key(latest)
     except Exception:
-        latest, up_to_date = None, None
+        latest, up_to_date, ahead = None, None, None
 
     return {"local": local, "latest": latest, "up_to_date": up_to_date,
-            "source": "github.com/syberloop/mcp-okf"}
+            "ahead": ahead, "source": "github.com/syberloop/mcp-okf"}
 
 
 def run(args, vault, config=None):
@@ -778,7 +785,13 @@ def run(args, vault, config=None):
     # Versión instalada vs última release (informativo, no afecta el score)
     v = version_info
     if v.get("latest") and v.get("up_to_date") is not None:
-        estado = "actualizada" if v["up_to_date"] else f"desactualizada — última: {v['latest']}"
+        if v.get("ahead"):
+            estado = (f"adelantada a la última release publicada (v{v['latest']}) "
+                      f"— sin verificar")
+        elif v["up_to_date"]:
+            estado = "actualizada"
+        else:
+            estado = f"desactualizada — última: {v['latest']}"
         print(f"ℹ️  Versión: {v['local']} ({estado}) · {v['source']}")
     else:
         print(f"ℹ️  Versión: {v['local']} (última release no verificable sin red) · {v['source']}")
