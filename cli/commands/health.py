@@ -156,8 +156,12 @@ def _check_graph(vault):
         warnings = []
         if orphans > 0:
             warnings.append(f"{orphans} orphan concept(s)")
-        if density < 0.05:
-            warnings.append(f"low density ({density:.3f})")
+        # La densidad NO es warning: es un KPI de forma del portafolio, no un
+        # defecto del vault. Decae sola al crecer (el denominador va con n² y
+        # las aristas con n), así que cualquier vault que crezca termina bajo
+        # el umbral haga lo que haga — y con `health --strict` en el pre-commit
+        # eso rechaza TODOS los commits, incluidos los de los agentes de sync.
+        # Se sigue informando en el reporte y en `graph.density` del JSON.
 
         return {
             "nodes": nodes, "edges": edges, "orphans": orphans, "density": density,
@@ -713,9 +717,11 @@ def run(args, vault, config=None):
         gt = g.get("tags", {})
         tag_str = f", {gt.get('total', 0)} tags ({gt.get('shared', 0)} shared)"
         if g["orphans"] == 0:
-            print(f"✅ Graph: {g['nodes']} nodes, {g['edges']} edges, 0 orphans{tag_str}")
+            print(f"✅ Graph: {g['nodes']} nodes, {g['edges']} edges, 0 orphans, "
+                  f"density {g['density']:.3f}{tag_str}")
         else:
-            print(f"⚠️  Graph: {g['nodes']} nodes, {g['edges']} edges, {g['orphans']} orphans{tag_str}")
+            print(f"⚠️  Graph: {g['nodes']} nodes, {g['edges']} edges, {g['orphans']} orphans, "
+                  f"density {g['density']:.3f}{tag_str}")
     else:
         print("❌ Graph: could not be analyzed")
 
