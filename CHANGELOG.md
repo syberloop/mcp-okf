@@ -4,6 +4,19 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-18] — v0.4.13
+
+### Fixed
+- **La línea de versión deja de afirmar «actualizada» sin haber verificado** (#28). `_check_version` consulta la última *release publicada* en GitHub y resolvía `up_to_date = local >= latest`: con el feed de releases parado en v0.4.3 y el código ya en 0.4.12, nueve versiones compartían un único veredicto verde — un CLI congelado en v0.4.3 recibía exactamente la misma etiqueta que master. `local > latest` **no** significa «al día»: significa que el feed quedó atrás y no puede verificar nada. Ahora `up_to_date = local == latest` (verificado) y `ahead = local > latest` (sin verificar), y la línea distingue los tres estados: `actualizada`, `desactualizada — última: vX`, `adelantada a la última release publicada (vX) — sin verificar`. Sigue siendo informativa, sin efecto sobre el score, y el cambio es aditivo (la clave `ahead` se suma a `version` en el JSON).
+- `tests/test_health_version_adelantada.py` (4 tests, `urlopen` mockeado): adelantada → no es «actualizada» pero sí `ahead`; igual → actualizada; atrasada → desactualizada; sin red → ningún estado inventado. RED sobre master: el caso semántico falla con `True is not false`.
+
+### Added
+- **El release commit vuelve a llevar tag y release de GitHub.** El chequeo de versión solo puede verificar contra `releases/latest`, así que un release commit sin tag deja el chequeo ciego por diseño — y era la causa de fondo del #28. Se publicaron retroactivamente `v0.4.4` → `v0.4.13` (tags anotados sobre el commit que fijó cada versión, con la sección del CHANGELOG como notas) y a partir de acá cada `release(vX.Y.Z)` va acompañado de su tag.
+
+Tests: 297.
+
+---
+
 ## [2026-09-17] — v0.4.12
 
 ### Fixed
