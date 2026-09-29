@@ -4,6 +4,20 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-29] — v0.4.18
+
+### Fixed
+- **El hook versionado (`hooks/pre-commit`) seguía invocando y stageando el `dashboard.md` retirado** — regresión del retiro de v0.4.17 en la capa que este mismo CHANGELOG declara fuente de verdad del hook del vault («el hook se versiona en `hooks/pre-commit`; antes solo existía instalado en `.git/hooks/` del vault, sin fuente de verdad — por eso el bug pasó desapercibido»). Efecto para quien tuviera el template instalado: `python3 -m cli dashboard` ya no existe (y el `2>/dev/null` lo volvía invisible), y `git add '**/index.md' index.md dashboard.md` fallaba con `fatal: pathspec 'dashboard.md' did not match any files` en **cada** commit.
+- El template queda alineado: sin `cli dashboard`, sin `dashboard.md` en el paso de staging, comentarios y mensajes actualizados. Se mantiene `dashboard-snapshot --source post-commit-hook` (el sensor DashboardView) y el skip defensivo de `dashboard.md` en el análisis de impacto.
+- `tests/test_hooks_template_coherente.py` (5 tests): extrae cada `python3 -m cli … <subcomando>` del template y lo contrasta contra los subcomandos que el CLI reconoce hoy; el `git add` del paso 5 no puede listar archivos retirados; el template existe y es ejecutable; y un guard del propio parser (si no ve al menos 4 invocaciones, falla en vez de pasar en vacío). Verificado RED sobre el template anterior: detecta `dashboard` (línea 49) como subcomando inexistente y el `dashboard.md` en el `git add`.
+
+### Por qué pasó (lección)
+El retiro de v0.4.17 se hizo con un `grep -rl … | head` que quedó truncado y **ocultó este archivo**. El rastreo previo a retirar un artefacto tiene que mirar el conteo, no la primera pantalla: un `| head` convierte una capa no actualizada en una capa invisible.
+
+Tests: 339.
+
+---
+
 ## [2026-09-29] — v0.4.17
 
 ### Removed

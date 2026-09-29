@@ -1,10 +1,10 @@
 #!/bin/bash
 # OKF Vault — pre-commit hook
 # 1. Valida archivos staged (bloqueante)
-# 2. Regenera índices y dashboard
+# 2. Regenera índices (+ log.md local)
 # 3. Health check informativo
 # 4. Bloqueo por referencias cruzadas (bloqueante)
-# 5. Stagea index.md y dashboard.md
+# 5. Stagea index.md
 
 VAULT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/OKF-Vault")"
 LOCK="$VAULT/.git/hooks/.okf-hook-lock"
@@ -42,11 +42,10 @@ if [ $VALIDATE_EXIT -ne 0 ]; then
 fi
 echo "$VALIDATE_OUT"
 
-# ── 2. REGENERAR ÍNDICES Y DASHBOARD ──
+# ── 2. REGENERAR ÍNDICES Y LOG ──
 echo ""
-echo "🔄 Regenerando índices y dashboard..."
+echo "🔄 Regenerando índices..."
 INDEX_ERR=$(python3 -m cli --vault "$VAULT" index 2>&1 >/dev/null)
-python3 -m cli --vault "$VAULT" dashboard 2>/dev/null
 # Sensor DashboardView: dashboard.json + snapshot diario. No bloquea el commit.
 python3 -m cli --vault "$VAULT" dashboard-snapshot --source post-commit-hook 2>/dev/null || true
 
@@ -188,8 +187,8 @@ EOF
     rm -f "$LAST_BLOCKED_FILE"
 fi
 
-# ── 5. STAGE INDEX Y DASHBOARD ──
-git add '**/index.md' index.md dashboard.md
+# ── 5. STAGE INDEX ──
+git add '**/index.md' index.md
 
 # ── 6. REGENERAR PREFILL (no bloqueante) ──
 # El prefill (handoffs pending + boot sequence + resumenes de sesiones) debe
