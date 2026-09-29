@@ -27,8 +27,13 @@ SCOPE_ENV = "OKF_SCOPE"
 
 # Comandos que escriben en el vault. Se bloquean con OKF_READONLY=true.
 # `touch` NO está: el incremento manual está deprecado y solo lee estadísticas.
+# ASIMETRIA INTENCIONAL: 
+# - En server.py: `touch` está en _WRITE_TOOLS (registrado solo si !readonly)
+# - En access.py: `touch` NO está en WRITE_COMMANDS (siempre permitido en CLI)
+# Esta diferencia es intencional: el servidor MCP puede restringir touch via readonly,
+# pero el CLI lo deja disponible para diagnósticos rápidos (no altera contenido).
 WRITE_COMMANDS = frozenset({
-    "new", "edit", "index", "canvas", "dashboard", "dashboard-snapshot",
+    "new", "edit", "index", "canvas", "dashboard-snapshot",
     "migrate-reads", "migrate",
 })
 
