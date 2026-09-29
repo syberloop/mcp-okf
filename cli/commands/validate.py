@@ -7,6 +7,8 @@ Validates that:
 4. Wikilinks are syntactically complete ([[ must have its closing ]])
 5. Wikilinks with alias (|) inside tables escape the pipe with \\|
 6. Wikilinks point to existing files (no broken links)
+7. No stray `cyber:` block in the body (it belongs in the frontmatter —
+   anywhere else it is inert: nothing reads it)
 
 Unlike parse_frontmatter, it has NO regex fallback.
 If the YAML is broken, it fails.
@@ -62,6 +64,42 @@ def _check_wikilinks_in_backticks(body, rel):
             match = re.search(r'(`\[\[[^`]+\]\]`)', line)
             fragment = match.group(1) if match else "?"
             errors.append(f"  line {i}: {fragment} → must be [[...]] without backticks")
+
+    return errors
+
+
+def _check_cyber_block_in_body(body, rel):
+    """Detects a stray `cyber:` YAML block written in the body.
+
+    The cyber block belongs in the FRONTMATTER (OKF v0.1): it is what
+    `health`, `review` and `dashboard-snapshot` read to decide whether a
+    loop is open, overdue or closed. A copy in the body is inert — nothing
+    reads it — and it is how the failure looks in practice: the Cyber
+    Review cron (job 90724426f80a) was told to update the cyber block "con
+    patch", so it appended the report to the body and dumped the YAML at the
+    end of the body, leaving the frontmatter's `outcome: pending` and an
+    expired `review_on` untouched. The loop stayed "broken" forever while the
+    report claimed success/failure.
+
+    Detected pattern: a column-0 `cyber:` mapping line in the body. Fenced
+    code blocks are stripped first, so a documented example inside ``` does
+    not trip it.
+
+    Returns:
+        list[str]: List of offending lines.
+    """
+    errors = []
+
+    clean = re.sub(r'```[\s\S]*?```', '', body)
+
+    for i, line in enumerate(clean.split("\n"), 1):
+        if re.match(r'^cyber:\s*$', line):
+            errors.append(
+                f"  line {i}: stray 'cyber:' block in the body → the cyber block "
+                "lives in the FRONTMATTER; update it with "
+                "mcp__okf__edit(fields=[\"cyber.outcome=...\"]) and delete it "
+                "from the body (nothing reads it there)"
+            )
 
     return errors
 
@@ -435,6 +473,15 @@ def _validate_file(filepath, vault, definitions=None, name_index=None):
                                      name_index=name_index)
     if broken:
         all_errors.append(f"wikilinks pointing to nonexistent files:\n" + "\n".join(broken))
+
+    # ── Validation 10: stray cyber block in the body ──
+    # Un bloque cyber en el cuerpo es inerte: health/review/dashboard leen el
+    # frontmatter. Ver el docstring de _check_cyber_block_in_body para el caso
+    # real (cron Cyber Review, 2026-09-25).
+    stray_cyber = _check_cyber_block_in_body(body, rel)
+    if stray_cyber:
+        all_errors.append("stray 'cyber:' block in body (belongs in frontmatter):\n"
+                          + "\n".join(stray_cyber))
 
     # ── Validation 8: apoptosis — supercedida exige replaced_by ──
     if str(fm.get("status", "")).strip().lower() == "supercedida":

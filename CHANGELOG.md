@@ -4,6 +4,18 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-29] — v0.4.15
+
+### Added
+- **El pre-commit rechaza un bloque `cyber:` escrito en el cuerpo** (Validación 10 de `validate`). El bloque cyber vive en el frontmatter: es lo que leen `health`, `review` y `dashboard-snapshot` para decidir si un loop está abierto, vencido o cerrado. Una copia en el cuerpo es **inerte** — nada la lee.
+- El caso real que la motivó (2026-09-25): el cron Cyber Review tiene la instrucción «Actualizar cyber block con patch». El agente la interpretó literal: escribió el reporte en el cuerpo y pegó el YAML al final del cuerpo, dejando el frontmatter intacto con `outcome: pending` y el `review_on` vencido. Resultado: 6 loops seguían contando como «broken loop» en `health` mientras el reporte decía success/failure, y el vault acumulaba YAML mal formado. En un séptimo concepto (`criterios-falsifiables-para-evaluar-comportamiento-agi-rudimentario`) el bloque estaba **solo** en el cuerpo y el frontmatter no tenía ninguno: invisible para health, review y dashboard — un loop muerto sin señal.
+- Detecta una línea `cyber:` a columna 0 en el cuerpo. Los bloques de código cercados (```) se descartan antes, así que un ejemplo documentado no dispara el error.
+- `tests/test_validate_cyber_block_body.py` (10 tests): bloque a columna 0 detectado; espacios finales; bloque dentro de ``` ignorado; ejemplo indentado ignorado; mención inline (`cyber.review_on` en prosa) ignorada; múltiples bloques; integración vía `_validate_file` (falla con el bloque pegado al final del reporte, pasa sin él y con el ejemplo cercado).
+
+Tests: 323.
+
+---
+
 ## [2026-09-28] — v0.4.14
 
 ### Fixed
