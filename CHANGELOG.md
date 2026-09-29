@@ -4,6 +4,19 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-29] — v0.4.19
+
+### Fixed
+- **`install.sh --with-hooks` no generaba el snapshot del DashboardView** (#24). La config que escribía (`.pre-commit-config.yaml`) corría `validate → index → health` y nada más, así que un vault instalado con `--with-cognitive-trace --with-hooks` mostraba el panel con «Snapshot no generado aún — se regenera en cada commit»: la promesa era falsa, porque ningún hook lo generaba. En todo el repo el único que llamaba a `dashboard-snapshot` era `hooks/pre-commit` del vault del sistema.
+- La sección 9 de `install.sh` agrega un cuarto hook (`okf-dashboard-snapshot`) con `|| true` — nunca bloquea el commit — y el vault entre comillas dentro del `bash -c`, así que funciona con rutas con espacios. Añade además `/dashboard.json` y `/sistema/dashboard-snapshots/` al `.gitignore` del vault, sin duplicar reglas y respetando un `.gitignore` sin salto final.
+- `tests/test_install_hooks_snapshot.py` corre el bloque real de la sección 9 (no una copia) contra un vault temporal.
+
+Nota: en el vault del sistema este hueco ya lo cubre el cron de 30 min; el fix sirve sobre todo a instalaciones nuevas.
+
+Tests: 341.
+
+---
+
 ## [2026-09-29] — v0.4.18
 
 ### Fixed
