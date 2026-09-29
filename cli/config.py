@@ -65,6 +65,11 @@ DEFAULTS: dict[str, Any] = {
         "propuesta_days": 30,
         "no_commits_days": 180,
         "checkbox_ratio": 0.7,
+        # Edad mínima (días) para que la señal "reads=0" cuente. El contador
+        # sale del store de telemetría (.okf/state/reads.jsonl), no del
+        # frontmatter: ausencia de entrada = 0 lecturas. Un concepto recién
+        # creado y todavía no leído no está desconectado de la realidad.
+        "reads_zero_min_days": 30,
         # Patrones de lenguaje de problema en description (regex, case-insensitive)
         # Señal 7 del detector: si la description habla de problemas y los
         # checkboxes del body están ≥70% completos, la description está obsoleta.
@@ -356,6 +361,10 @@ class Config:
     @property
     def stale_checkbox_ratio(self) -> float:
         return float(self._data["stale"]["checkbox_ratio"])
+
+    @property
+    def stale_reads_zero_min_days(self) -> int:
+        return int(self._data["stale"].get("reads_zero_min_days", 30))
 
     @property
     def stale_problem_patterns(self) -> list[str]:

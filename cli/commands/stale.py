@@ -6,6 +6,10 @@ concepts with valid format but disconnected from current reality.
 Signals:
   1. timestamp > 90 days        → stale content
   2. reads = 0                  → nobody consults it
+     (counter read from the telemetry store .okf/state/reads.jsonl —
+     decisión 2026-08-27: el campo `reads` ya NO vive en el frontmatter.
+     Solo cuenta si el concepto ya tiene antigüedad > reads_zero_min_days,
+     para no marcar como stale un concepto recién creado y aún no leído)
   3. status: proposal > 30 days → phantom decision
   4. no backlinks               → orphan in the graph
   5. no commits > 6 months      → unmaintained
@@ -27,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from cli.frontmatter import parse_frontmatter
+from cli.reads_store import get_reads
 from cli.vault import find_md_files
 
 
@@ -165,10 +170,11 @@ def build_backlinks_index(vault):
 
 def collect_stale(vault, timestamp_days=90, propuesta_days=30,
                   no_commits_days=180, checkbox_ratio=0.7,
-                  problem_patterns=None):
+                  problem_patterns=None, reads_zero_min_days=30):
     """Scans all concepts and evaluates staleness signals."""
     today = get_today()
     backlinks = build_backlinks_index(vault)
+    reads_index = get_reads(vault)
     from cli.gitutil import build_git_dates_index
     git_index = build_git_dates_index(vault)
     results = []
@@ -187,26 +193,36 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
         signals = []
         details = {}
 
-        # ── Señal 1: timestamp antiguo ──
+        # Edades base: se calculan una sola vez (las usan las señales 1, 2, 3 y 5).
         ts = fm.get("timestamp")
-        if ts:
-            age = days_ago(str(ts), today)
-            if age is not None and age > timestamp_days:
-                signals.append(f"timestamp {age}d")
-                details["age_days"] = age
+        ts_age = days_ago(str(ts), today) if ts else None
+        last_commit = git_last_commit_date(f, vault, git_index=git_index)
+        commit_age = days_ago(last_commit, today) if last_commit else None
+        # Edad efectiva: timestamp propio si lo hay, si no la del último commit.
+        concept_age = ts_age if ts_age is not None else commit_age
+
+        # ── Señal 1: timestamp antiguo ──
+        if ts_age is not None and ts_age > timestamp_days:
+            signals.append(f"timestamp {ts_age}d")
+            details["age_days"] = ts_age
 
         # ── Señal 2: reads = 0 ──
-        reads = fm.get("reads")
-        if reads is not None and int(reads) == 0:
-            signals.append("reads=0")
+        # El contador de lecturas vive en el store de telemetría
+        # (.okf/state/reads.jsonl, decisión 2026-08-27) — NO en el frontmatter.
+        # Ausencia de entrada = 0 lecturas. Solo cuenta como señal si el
+        # concepto ya tiene antigüedad > reads_zero_min_days: un concepto
+        # recién creado y aún no leído no está desconectado de la realidad.
+        if reads_index.get(rel, 0) == 0:
+            if concept_age is not None and concept_age > reads_zero_min_days:
+                signals.append(f"reads=0 ({concept_age}d)")
+                details["reads"] = 0
 
         # ── Señal 3: status: propuesta sin resolver ──
         status = fm.get("status", "")
         if str(status).lower() == "propuesta":
-            if ts:
-                age = days_ago(str(ts), today)
-                if age is not None and age > propuesta_days:
-                    signals.append(f"proposal unresolved ({age}d)")
+            if ts_age is not None:
+                if ts_age > propuesta_days:
+                    signals.append(f"proposal unresolved ({ts_age}d)")
             else:
                 signals.append("proposal missing timestamp")
 
@@ -218,10 +234,8 @@ def collect_stale(vault, timestamp_days=90, propuesta_days=30,
                 signals.append("no backlinks")
 
         # ── Señal 5: sin commits ──
-        last_commit = git_last_commit_date(f, vault, git_index=git_index)
-        if last_commit:
-            commit_age = days_ago(last_commit, today)
-            if commit_age is not None and commit_age > no_commits_days:
+        if commit_age is not None:
+            if commit_age > no_commits_days:
                 signals.append(f"no commits ({commit_age}d)")
                 details["commit_age_days"] = commit_age
         else:
@@ -279,9 +293,11 @@ def run(args, vault, config=None):
     no_commits_days = config.stale_no_commits_days if config else 180
     checkbox_ratio = config.stale_checkbox_ratio if config else 0.7
     problem_patterns = config.stale_problem_patterns if config else None
+    reads_zero_min_days = config.stale_reads_zero_min_days if config else 30
 
     results = collect_stale(vault, timestamp_days, propuesta_days,
-                            no_commits_days, checkbox_ratio, problem_patterns)
+                            no_commits_days, checkbox_ratio, problem_patterns,
+                            reads_zero_min_days)
 
     if json_out:
         print(json.dumps(results, ensure_ascii=False, indent=2))

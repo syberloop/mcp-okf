@@ -90,10 +90,17 @@ stale:
   timestamp_days: 90
 
   # Days in "proposed" status without a decision.
-  proposed_days: 30
+  # (Clave real: propuesta_days — así la lee cli/config.py.)
+  propuesta_days: 30
 
   # Days without git commits touching this file.
   no_commits_days: 180
+
+  # Minimum age (days) for the "reads=0" signal to count. Read counters
+  # live in the telemetry store (<vault>/.okf/state/reads.jsonl) since
+  # 2026-08-27 — not in the frontmatter. A missing entry means 0 reads,
+  # so a freshly created concept nobody read yet is not stale.
+  reads_zero_min_days: 30
 
   # If >= this fraction of checkboxes are complete but the
   # description still references problems, signal 7 fires.

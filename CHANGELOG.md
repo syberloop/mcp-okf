@@ -4,6 +4,19 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-28] — v0.4.14
+
+### Fixed
+- **La señal `reads=0` del detector de stale leía de donde el contador ya no vive** — era código muerto. `collect_stale` hacía `fm.get("reads")`, pero desde la decisión 2026-08-27 los read counters no se escriben en el frontmatter: viven en `<vault>/.okf/state/reads.jsonl` (`cli/reads_store.py`). La señal nunca podía disparar — cero ocurrencias sobre los 660 conceptos del vault real, pese a que 279 de ellos tienen 0 lecturas en el store. Ahora el contador sale del store (`get_reads`, una sola lectura por corrida, no una por concepto) y **la ausencia de entrada cuenta como 0**, con un gate de antigüedad: la señal solo dispara si el concepto ya tiene edad (`timestamp` propio, o último commit si no lo hay) mayor a `stale.reads_zero_min_days` (default 30, configurable en `.okf.config.yaml`). Sin ese gate, cada concepto recién creado y todavía no leído —que no está desconectado de la realidad— entraba como señal.
+- Efecto medido sobre el vault real (660 conceptos): antes de la corrección `0 STALE / 200 ATENCIÓN / 460 FRESCO` — un «todo limpio» falso, porque una de las siete señales estaba muerta. Después: `8 STALE / 300 ATENCIÓN / 352 FRESCO`. Los 8 son genuinos: 7 insights de `insights/dreaming/` y 1 plan de contenido, todos con propuesta vencida (32–59 días), huérfanos de grafo y sin una sola lectura.
+- `okf.config.example.yaml` documentaba `proposed_days` para el umbral de propuestas, pero `cli/config.py` lee `propuesta_days`: quien copiaba el ejemplo creía haber configurado algo y caía en silencio al default embebido. Corregido, y el ejemplo ahora documenta `reads_zero_min_days`.
+- `tests/test_stale_reads_store.py` (16 tests): contador desde el store; entrada en el store suprime la señal; `baseline: 0` cuenta como 0 lecturas; concepto joven no se marca; umbral configurable en ambas direcciones; `reads:` legacy en el frontmatter se ignora y no enmascara un 0 real; `details.reads`; y `get_reads` se llama **una sola vez** por corrida.
+- `tests/test_dashboard_snapshot_conceptos.py`: el fixture siembra lecturas para `conceptos/a` y `sesiones/sesion-x`, los dos nodos que el test espera FRESCO — sin ellas la señal (ahora viva) los marcaba ATENCIÓN.
+
+Tests: 313.
+
+---
+
 ## [2026-09-18] — v0.4.13
 
 ### Fixed

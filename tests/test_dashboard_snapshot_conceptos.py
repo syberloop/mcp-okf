@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from cli.commands.dashboard_snapshot import _build_snapshot, _domain_today, run
+from cli.reads_store import increment_reads
 
 # Commit reciente simulado: elimina la señal "no commits" de collect_stale
 # en vaults de prueba que no son repos git (build_git_dates_index → vacío).
@@ -83,6 +84,12 @@ class ConceptosFixture(unittest.TestCase):
             'description: "Generado, no es concepto"\n---\n',
             encoding="utf-8",
         )
+        # a y la minuta de sesión son nodos "vivos": tienen lecturas en el
+        # store de telemetría. Sin esto, la señal reads=0 (que desde el fix
+        # lee .okf/state/reads.jsonl y no el frontmatter) los marcaría
+        # ATENCION y no FRESCO.
+        increment_reads(self.vault / "conceptos/a.md", self.vault)
+        increment_reads(self.vault / "sesiones/sesion-x.md", self.vault)
 
     def tearDown(self):
         self.tmp.cleanup()
