@@ -9,6 +9,9 @@ Validates that:
 6. Wikilinks point to existing files (no broken links)
 7. No stray `cyber:` block in the body (it belongs in the frontmatter —
    anywhere else it is inert: nothing reads it)
+8. The body keeps its content: a body that loses most of its lines vs HEAD
+   is rejected (catches an agent rewriting the whole body instead of
+   appending)
 
 Unlike parse_frontmatter, it has NO regex fallback.
 If the YAML is broken, it fails.
@@ -23,6 +26,11 @@ import re
 import sys
 from pathlib import Path
 from cli.vault import find_md_files, EXCLUDE_FILES
+
+# Guard de pérdida de contenido (validación 11): un body que conserva menos de
+# esta fracción de sus líneas con contenido respecto a HEAD se rechaza.
+_SHRINK_RATIO = 0.6
+_SHRINK_MIN_LINES = 20
 
 
 def _extract_body(text, fm_end):
@@ -102,6 +110,82 @@ def _check_cyber_block_in_body(body, rel):
             )
 
     return errors
+
+
+def _head_body(filepath, vault, rel=None):
+    """Body del archivo tal como está en HEAD. None si no existe o no hay git.
+
+    Se usa para comparar el contenido del body antes/después de un cambio: un
+    body que pierde la mayor parte de sus líneas casi siempre es contenido
+    borrado, no una edición.
+    """
+    import subprocess
+    if rel is None:
+        try:
+            rel = str(Path(filepath).resolve().relative_to(Path(vault).resolve()))
+        except ValueError:
+            return None
+    try:
+        r = subprocess.run(["git", "-C", str(vault), "show", f"HEAD:{rel}"],
+                           capture_output=True, text=True, timeout=10)
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout
+
+
+def _body_line_count(text):
+    """Líneas con contenido (ignora líneas vacías)."""
+    return len([l for l in text.split("\n") if l.strip()])
+
+
+def _strip_frontmatter(text):
+    """Quita el bloque frontmatter inicial (si lo hay)."""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            return text[end + 4:]
+    return text
+
+
+def _check_body_shrink(filepath, vault, body, rel):
+    """Rechaza un body que perdió la mayor parte de su contenido.
+
+    Caso real (2026-09-29): el cron Cyber Review reescribió el body de un
+    concepto con `mcp__okf__edit(body=...)` en vez de anexar su reporte, y
+    borró 111 líneas (Contexto/Decisión/Impacto) dejando solo el reporte. El
+    commit pasó: nada comparaba el body nuevo con el anterior, así que la
+    pérdida solo se detectó minutos después, a mano.
+
+    Un guard de prompt no alcanza para esto — la pérdida es irreversible desde
+    el archivo, así que se ataja en el commit. Compara el body staged contra el
+    de HEAD: si tenía >= _SHRINK_MIN_LINES líneas con contenido y el nuevo
+    conserva menos de _SHRINK_RATIO, es error.
+
+    Returns:
+        str or None: mensaje de error, o None si el body está sano.
+    """
+    previous = _head_body(filepath, vault, rel=rel)
+    if previous is None:
+        return None  # archivo nuevo (o sin git): no hay con qué comparar
+
+    prev_lines = _body_line_count(_strip_frontmatter(previous))
+    if prev_lines < _SHRINK_MIN_LINES:
+        return None
+
+    new_lines = _body_line_count(body)
+    if new_lines >= prev_lines * _SHRINK_RATIO:
+        return None
+
+    return (
+        f"body shrink: {prev_lines} → {new_lines} líneas con contenido "
+        f"({new_lines * 100 // max(prev_lines, 1)}% del anterior). Un cambio "
+        f"normal no borra la mayoría del body: si esto es intencional, "
+        f"reescribí el archivo a mano; si no, restaurá con "
+        f"`git checkout HEAD -- {rel}` y volvé a aplicar el cambio anexando "
+        f"(nunca `mcp__okf__edit(body=...)` para agregar texto al final)"
+    )
 
 
 def _check_malformed_wikilinks(body, rel):
@@ -482,6 +566,13 @@ def _validate_file(filepath, vault, definitions=None, name_index=None):
     if stray_cyber:
         all_errors.append("stray 'cyber:' block in body (belongs in frontmatter):\n"
                           + "\n".join(stray_cyber))
+
+    # ── Validation 11: el body conserva su contenido ──
+    # Ataja la pérdida de contenido: un agente que reescribe el body entero
+    # (mcp__okf__edit(body=...)) en vez de anexar. Caso real 2026-09-29.
+    shrink = _check_body_shrink(filepath, vault, body, rel)
+    if shrink:
+        all_errors.append(shrink)
 
     # ── Validation 8: apoptosis — supercedida exige replaced_by ──
     if str(fm.get("status", "")).strip().lower() == "supercedida":

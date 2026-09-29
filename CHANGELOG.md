@@ -4,6 +4,21 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-29] — v0.4.16
+
+### Added
+- **El pre-commit rechaza un body que pierde la mayor parte de su contenido** (Validación 11 de `validate`). Nada comparaba el body nuevo con el anterior, así que un agente podía vaciar un concepto entero y el commit pasaba sin objeción.
+- Caso real del mismo día, 12:29: una corrida del cron Cyber Review resolvió dos conceptos. En `decisions/agent-factory-plugin-como-controller-del-loop-de-control-cibernetico.md` hizo lo correcto en el frontmatter (cerró el loop con `cyber.outcome`) y lo destructivo en el body: en vez de anexar su reporte, reescribió el body completo con `mcp__okf__edit(body=...)` y **borró 111 líneas** — Contexto, Decisión, Impacto de la decisión entera. El commit entró y la pérdida se detectó a mano minutos después (restaurada desde el commit anterior).
+- El guard compara el body staged contra el de HEAD: si el anterior tenía >= 20 líneas con contenido y el nuevo conserva menos del 60%, el commit se aborta con la ruta del archivo y la instrucción de restaurar. Un archivo nuevo, un vault sin git y un body corto (que no tiene "contenido que perder") quedan exentos.
+- Es un control de runtime, no una instrucción de prompt: la pérdida de contenido es irreversible desde el archivo, y una regla de prompt depende de que el modelo obedezca.
+- `tests/test_validate_body_shrink.py` (11 tests): umbral de líneas ignorando blancos; frontmatter descontado al medir; body truncado rechazado; anexar permitido; recorte menor permitido; bodies cortos exentos; archivo nuevo exento; vault sin git exento; integración vía `_validate_file` con la forma exacta del incidente.
+
+Costo: `validate --all` pasa de ~2s a ~6s sobre 660 archivos (una consulta a git por archivo); el pre-commit valida solo los staged, así que ahí es despreciable.
+
+Tests: 334.
+
+---
+
 ## [2026-09-29] — v0.4.15
 
 ### Added
