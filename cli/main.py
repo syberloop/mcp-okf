@@ -12,7 +12,6 @@ Commands:
     index       Regenerate index.md and log.md
     new         Create a new concept
     touch       Read statistics
-    dashboard   Generate dashboard.md
     dashboard-snapshot  Generate dashboard.json + daily snapshot
     stale       Semantic staleness detector
     review      Cybernetic review (expired review_on)
@@ -258,9 +257,6 @@ def build_parser():
     sp_analytics.add_argument("--session-id", type=str, default="",
                               help="Filter by session (empty = current via $OKF_SESSION_ID)")
 
-    # ── dashboard ──
-    sp_dash = subparsers.add_parser("dashboard", help="Generate dashboard.md")
-
     # ── dashboard-snapshot ──
     sp_snap = subparsers.add_parser(
         "dashboard-snapshot",
@@ -423,10 +419,6 @@ def main(argv=None):
 
         elif command == "analytics":
             from cli.commands.analytics import run
-            _exit = run(args, vault, config) or 0
-
-        elif command == "dashboard":
-            from cli.commands.dashboard import run
             _exit = run(args, vault, config) or 0
 
         elif command == "dashboard-snapshot":

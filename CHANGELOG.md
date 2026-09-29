@@ -4,6 +4,17 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 
 ---
 
+## [2026-09-29] — v0.4.17
+
+### Removed
+- **`cli dashboard` y `cli/commands/dashboard.py`** (BREAKING para quien invoque el comando): el `dashboard.md` estático se deprecó y se retiró. Lo reemplaza `cli dashboard-snapshot`, que genera `dashboard.json` + los snapshots diarios que consume el panel DashboardView del plugin Cognitive Trace — el `dashboard.md` duplicaba esa función y ya venía divergiendo: su encabezado decía «Salud: 🟡 6/7» mientras `health` reportaba 8/9 sobre la misma fecha, así que además de churn era una vista que mentía.
+- Números que motivaron el retiro, medidos sobre el vault real: **913 de 1129 commits (81%)** tocaban `dashboard.md`, y sus blobs suman **3,2 MB de los 24 MB** del `.git`. Al ser un archivo versionado con `generated_at` en el encabezado, cada commit —incluidos los de un solo concepto— producía una versión nueva de 65 KB.
+- `dashboard.md` **sigue existiendo en las listas de exclusión** (`cli/vault.py`, `cli/config.py`, `validate`, `trace`, `dashboard_snapshot`): no genera nada, pero si un vault viejo trae el archivo, queda fuera del índice y del grafo en lugar de entrar como concepto fantasma.
+
+Tests: 334.
+
+---
+
 ## [2026-09-29] — v0.4.16
 
 ### Added
