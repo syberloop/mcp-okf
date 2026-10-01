@@ -3,6 +3,20 @@
 Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a Changelog](https://keepachangelog.com/).
 
 ---
+## [2026-10-01] — v0.4.21
+
+### Fixed
+- **El hook versionado (`hooks/pre-commit`) dependía del `python3` del PATH y bloqueaba el commit si ese intérprete no traía PyYAML**. Hallado en el boot sequence del handoff DSH del 2026-10-01: el toolchain de Hermes se instaló el 2026-09-30 en `~/.hermes/tools/python-3.14.7*/bin`, quedó primero en el PATH de las sesiones de Hermes, y **no incluye PyYAML**. Desde ese momento `python3 -m cli validate` moría con `ModuleNotFoundError: No module named 'yaml'` y el hook reportaba «COMMIT BLOQUEADO — VALIDACIÓN FALLIDA»: el mensaje culpaba a la validación en vez de al intérprete.
+- El hook ahora **resuelve un intérprete que pueda importar `yaml`** (`/usr/bin/python3` primero, luego el `python3` del PATH), lo usa en todas sus invocaciones del CLI (`validate`, `index`, `dashboard-snapshot`, `health`, `graph impact-batch`, `regenerar-prefill.py`), admite override explícito con `OKF_PYTHON` y **aborta con `exit 1` y un mensaje accionable** si ninguno sirve — un hook que no puede validar no debe aprobar el commit en silencio.
+- `tests/test_hooks_template_coherente.py` (+4 tests, 9 en total): toda invocación del CLI en el template debe pasar por el intérprete resuelto; el orden de candidatos empieza por `/usr/bin/python3`; el override está documentado; y sin intérprete válido el hook sale `1`.
+
+### Por qué pasó (misma clase que el detector)
+El 2026-10-01 también se encontró que `~/.hermes/scripts/detector-ritmo.py` respondía «0 handoffs / IDLE» en silencio cuando el intérprete no tenía PyYAML (ver `dsh-rhythm`, commit `9d8459b`). Las dos veces el patrón es el mismo: **una dependencia dura que falta se degrada en una respuesta plausible en vez de fallar**. Los sensores que no pueden leer no deben reportar «todo tranquilo».
+
+Tests: 373.
+
+---
+
 ## [2026-09-29] — v0.4.20
 
 ### Fixed

@@ -22,9 +22,30 @@ CLI_DIR="$HOME/.hermes/mcp-servers/okf"
 PYTHONPATH="$CLI_DIR"
 export PYTHONPATH
 
+# Intérprete para el CLI: validate/index/health necesitan PyYAML. No confiar en
+# el `python3` del PATH — el toolchain de Hermes (~/.hermes/tools/python-*/bin)
+# NO lo trae, y el hook moría con ModuleNotFoundError dejando el commit
+# bloqueado sin explicar por qué. Elegir el primero que pueda importar yaml.
+# Override explícito: OKF_PYTHON=/ruta/a/python3
+OKF_PY="${OKF_PYTHON:-}"
+if [ -z "$OKF_PY" ]; then
+    for _cand in /usr/bin/python3 python3; do
+        if command -v "$_cand" >/dev/null 2>&1 && \
+           "$_cand" -c 'import yaml' >/dev/null 2>&1; then
+            OKF_PY="$_cand"; break
+        fi
+    done
+fi
+if [ -z "$OKF_PY" ]; then
+    echo "🚨 pre-commit: ningún intérprete con PyYAML — no puedo validar el vault." >&2
+    echo "   Arreglo: /usr/bin/python3 -m pip install pyyaml" >&2
+    echo "   (o export OKF_PYTHON=/ruta/a/un/python3 que tenga yaml)" >&2
+    exit 1
+fi
+
 # ── 1. VALIDACIÓN BLOQUEANTE ──
 echo "🔍 Validando archivos staged..."
-VALIDATE_OUT=$(python3 -m cli --vault "$VAULT" validate 2>&1)
+VALIDATE_OUT=$("$OKF_PY" -m cli --vault "$VAULT" validate 2>&1)
 VALIDATE_EXIT=$?
 
 if [ $VALIDATE_EXIT -ne 0 ]; then
@@ -45,9 +66,9 @@ echo "$VALIDATE_OUT"
 # ── 2. REGENERAR ÍNDICES Y LOG ──
 echo ""
 echo "🔄 Regenerando índices..."
-INDEX_ERR=$(python3 -m cli --vault "$VAULT" index 2>&1 >/dev/null)
+INDEX_ERR=$("$OKF_PY" -m cli --vault "$VAULT" index 2>&1 >/dev/null)
 # Sensor DashboardView: dashboard.json + snapshot diario. No bloquea el commit.
-python3 -m cli --vault "$VAULT" dashboard-snapshot --source post-commit-hook 2>/dev/null || true
+"$OKF_PY" -m cli --vault "$VAULT" dashboard-snapshot --source post-commit-hook 2>/dev/null || true
 
 # Bloquear solo si el indexer encontró directorios SIN descripción (error real).
 # NO bloquear por LONG DESCRIPTION (warning informativo: el indexer trunca y sigue).
@@ -71,7 +92,7 @@ fi
 # ── 3. HEALTH CHECK INFORMATIVO ──
 echo ""
 echo "🔍 Health check:"
-python3 -m cli --vault "$VAULT" health 2>/dev/null || true
+"$OKF_PY" -m cli --vault "$VAULT" health 2>/dev/null || true
 
 # ── 4. ANÁLISIS DE IMPACTO ONTOLÓGICO ──
 echo ""
@@ -113,7 +134,7 @@ else
 
     if [ -n "$IMPACT_FILES" ]; then
         # Un solo build_graph para todos los archivos
-        IMPACT_OUT=$(python3 -m cli --vault "$VAULT" graph impact-batch $IMPACT_FILES 2>/dev/null)
+        IMPACT_OUT=$("$OKF_PY" -m cli --vault "$VAULT" graph impact-batch $IMPACT_FILES 2>/dev/null)
 
         # Parsear output por archivo (separado por --- y 📋)
         CURRENT_FILE=""
@@ -193,4 +214,4 @@ git add '**/index.md' index.md
 # ── 6. REGENERAR PREFILL (no bloqueante) ──
 # El prefill (handoffs pending + boot sequence + resumenes de sesiones) debe
 # reflejar el estado actual del vault en cada commit. Fallo = silencioso.
-python3 "$HOME/.hermes/scripts/regenerar-prefill.py" >/dev/null 2>&1 || true
+"$OKF_PY" "$HOME/.hermes/scripts/regenerar-prefill.py" >/dev/null 2>&1 || true

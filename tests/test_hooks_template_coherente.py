@@ -101,5 +101,54 @@ class HooksTemplateCoherencia(unittest.TestCase):
         )
 
 
+class HooksTemplateInterprete(unittest.TestCase):
+    """El template no debe depender del `python3` del PATH.
+
+    Caso real (2026-10-01, hallado en el boot sequence del handoff DSH): el
+    toolchain de Hermes se instaló el 2026-09-30 en ~/.hermes/tools/python-*/, y
+    desde entonces `python3` en una sesión de Hermes apunta a un intérprete SIN
+    PyYAML. El hook ejecutaba `python3 -m cli validate` y moría con
+    `ModuleNotFoundError: No module named 'yaml'` — bloqueando el commit sin
+    explicar la causa real (el mensaje hablaba de validación fallida).
+    """
+
+    def setUp(self):
+        self.texto = TEMPLATE.read_text(encoding="utf-8")
+        self.lineas_cli = [l for l in self.texto.split("\n") if "-m cli" in l]
+
+    def test_toda_invocacion_usa_el_interprete_resuelto(self):
+        sin_resolver = [l.strip() for l in self.lineas_cli if "$OKF_PY" not in l]
+        self.assertEqual(
+            sin_resolver, [],
+            "estas invocaciones no usan el intérprete resuelto ($OKF_PY) y "
+            f"dependen del PATH: {sin_resolver}",
+        )
+
+    def test_resuelve_un_interprete_con_pyyaml(self):
+        self.assertRegex(
+            self.texto, r"import yaml",
+            "el hook debe comprobar que el intérprete puede importar yaml",
+        )
+        self.assertIn("OKF_PY=", self.texto)
+        # El orden de candidatos debe empezar por el python del sistema, que sí
+        # trae PyYAML, y no por el `python3` del PATH.
+        self.assertRegex(
+            self.texto, r"for _cand in /usr/bin/python3 python3",
+            "los candidatos deben empezar por /usr/bin/python3",
+        )
+
+    def test_override_documentado(self):
+        self.assertIn("OKF_PYTHON", self.texto,
+                      "debe poder forzarse el intérprete con OKF_PYTHON")
+
+    def test_falla_ruidoso_si_no_hay_yaml(self):
+        # Sin intérprete válido el hook NO debe seguir: un hook que no puede
+        # validar no puede aprobar el commit en silencio.
+        self.assertRegex(
+            self.texto, r"ningún intérprete con PyYAML[\s\S]{0,200}exit 1",
+            "el hook debe abortar (exit 1) con mensaje si ningún intérprete tiene yaml",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
