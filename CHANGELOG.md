@@ -6,6 +6,19 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 ## [Unreleased]
 
 ---
+## [2026-10-23] — v0.4.31
+
+Con tres vaults servidos por el mismo `server.py`, la única falla silenciosa posible era elegir el prefijo equivocado (`mcp__okf__new` en vez de `mcp__okf_<cliente>__new`): el docstring de las tools era idéntico en las tres instancias y la respuesta no decía sobre qué vault se había escrito. Un `new` mal dirigido creaba un concepto huérfano en el grafo equivocado, con la taxonomía del padre.
+
+### Sello de identidad de vault (`server.py`)
+
+- **El schema declara el vault** (`_vault_label()` + `_mcp_tool()`): el docstring de cada tool se sella con `Vault de esta instancia: <nombre> (<ruta absoluta>)` antes de registrarla. El agente lo lee en el schema ANTES de llamar, así el prefijo equivocado deja de ser invisible. El sello se re-aplica sin acumularse en reimportaciones.
+- **La escritura se verifica E2E** (`_seal_output()`): toda tool de `_WRITE_TOOLS` cierra su salida con `[vault: <nombre> (<ruta>)]`; si el CLI cita un `.md` absoluto fuera de este vault → `[ERROR: la salida cita archivos fuera de este vault: …]`; si lo cita como creado y no existe → `[ERROR: el CLI reporta éxito pero no existe: …]`. Cubre también los caminos de timeout y excepción.
+- **`--dry-run` no se verifica**: no escribe, así que exigir la existencia del archivo era un falso positivo. Detectado con un mini-cliente stdio real sobre los tres servers antes de cortar la etiqueta.
+- Tests: `tests/test_multivault_seal.py` (+12): label con nombre y ruta, sello en escritura y no en lectura, archivo fuera del vault, éxito fantasma, ruta relativa que no debe confundirse con absoluta (`insights/x.md` ≠ `/x.md`), exit≠0 sellado sin verificar, `edit` sellado, dry-run sin verificación, y el docstring sellado en **subproceso** (borrar `cli.*` de `sys.modules` para recargar contamina los monkeypatches de otros tests: rompía `test_scope_readonly` y `test_stale_reads_store`). Suite: **547**.
+- Medido en los tres vaults (2026-10-23): `okf` (721 nodos, 9/9), `okf-skynet` (306, 8/8), `okf-controlresearch` (79, 8/8) — cada server se identifica con su propio vault, sin filtrar el nombre de otro, y una escritura real por stdio devuelve el sello con el path absoluto correcto.
+
+---
 ## [2026-10-22] — v0.4.30
 
 El sensor de review contaba conceptos muertos como tareas pendientes: escaneaba `cyber.review_on` sin mirar `status`, así que un concepto que completó apoptosis aparecía vencido para siempre y `health`/el dashboard lo contaban como loop roto. Los dos únicos vencidos del vault OKF el 2026-10-22 eran una Decision `reemplazada` (dashboard.md) y un Plan `cancelada` (migración a A2A) — 100% falsos positivos.

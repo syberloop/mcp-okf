@@ -107,11 +107,54 @@ _WRITE_TOOLS = frozenset({
 })
 
 
+def _vault_label() -> str:
+    """Identidad legible del vault que sirve esta instancia (patrón multi-vault)."""
+    return f"{VAULT.name} ({VAULT})"
+
+
+def _seal_output(output: str, tool_name: str, returncode: int, args: list[str] | None = None) -> str:
+    """Sella la salida de las tools de escritura con el vault real.
+
+    Multi-vault: la única falla silenciosa posible es invocar la tool del vault
+    equivocado (`mcp__okf__new` vs `mcp__okf_<cliente>__new`). El sello hace
+    visible en cada respuesta sobre qué vault se escribió, y la verificación
+    E2E detecta un OKF_VAULT mal configurado antes de que el agente lo crea.
+
+    `--dry-run` NO escribe: verificar la existencia del archivo ahí sería un
+    falso positivo (detectado con un mini-cliente stdio real sobre los 3
+    servers). En dry-run solo se sella la identidad.
+    """
+    short = tool_name[4:] if tool_name.startswith("okf_") else tool_name
+    if short not in _WRITE_TOOLS:
+        return output
+    seal = f"[vault: {_vault_label()}]"
+    if seal in output:
+        return output
+    dry_run = bool(args) and "--dry-run" in args
+    if returncode == 0 and not dry_run:
+        roots = {str(VAULT), str(VAULT.resolve())}
+        cited = re.findall(r"(?<![\w./-])/[\w./-]+\.md\b", output)
+        outside = [p for p in cited if not any(p.startswith(r + "/") or p == r for r in roots)]
+        if outside:
+            seal += f"\n[ERROR: la salida cita archivos fuera de este vault: {', '.join(outside[:3])}]"
+        else:
+            missing = [p for p in cited if not Path(p).exists()]
+            if missing:
+                seal += f"\n[ERROR: el CLI reporta éxito pero no existe: {', '.join(missing[:3])}]"
+    return output + "\n" + seal
+
+
 def _mcp_tool():
     """Registra la tool solo si la política de acceso lo permite."""
     def _decorator(fn):
         if _READONLY and fn.__name__ in _WRITE_TOOLS:
             return fn  # definida pero NO registrada
+        # Sella el docstring con el vault servido: el schema llega al agente
+        # ANTES de la llamada, así elegir el prefijo equivocado es visible en
+        # lugar de silencioso (el docstring es idéntico en todas las instancias).
+        doc = (fn.__doc__ or "").rstrip()
+        doc = re.sub(r"\n*Vault de esta instancia:.*\Z", "", doc, flags=re.S)
+        fn.__doc__ = (doc + f"\n\nVault de esta instancia: {_vault_label()}.").strip()
         return mcp.tool()(fn)
     return _decorator
 
@@ -506,7 +549,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
         # SQLite/JSONL. Secondary traverse extraction must not reorder
         # subsequent events nor be lost on process exit.
         _finish_event(tool_name, params or {}, result, duration_ms, list(args))
-        return output.strip() or "(no output)"
+        return _seal_output(output, tool_name, result.returncode, list(args)).strip() or "(no output)"
     except subprocess.TimeoutExpired as e:
         duration_ms = int((time.monotonic() - start) * 1000) if "start" in locals() else timeout * 1000
         result = subprocess.CompletedProcess(
@@ -516,7 +559,7 @@ def _run(args: list[str], tool_name: str = "unknown", params: dict | None = None
             stderr=f"Timeout after {timeout}s",
         )
         _finish_event(tool_name, params or {}, result, duration_ms, list(args))
-        return "[timeout] The command exceeded the time limit."
+        return _seal_output("[timeout] The command exceeded the time limit.", tool_name, 124)
     except Exception as e:
         duration_ms = int((time.monotonic() - start) * 1000) if "start" in locals() else 0
         result = subprocess.CompletedProcess(
