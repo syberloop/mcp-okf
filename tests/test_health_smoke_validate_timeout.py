@@ -49,6 +49,13 @@ class TestSmokeValidateTimeout(unittest.TestCase):
         self.assertEqual(_timeout_de_validate("/tmp/vault-inexistente"),
                          health.VALIDATE_SMOKE_MIN_S)
 
+    def test_vault_enorme_no_pasa_del_techo(self):
+        """Sin techo, 0,15 s × 10.000 archivos = 25 min: el smoke dejaría de
+        detectar el cuelgue que existe para detectar."""
+        tope = _timeout_de_validate(_vault_con(2000))
+        self.assertEqual(tope, health.VALIDATE_SMOKE_MAX_S)
+        self.assertLess(tope, 2000 * health.VALIDATE_SMOKE_S_PER_FILE)
+
 
 if __name__ == "__main__":
     unittest.main()

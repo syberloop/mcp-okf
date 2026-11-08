@@ -343,15 +343,20 @@ WRITE_SMOKE = frozenset({"new"})
 # commit sobre un vault válido. El tope escala con el tamaño, con piso en 15 s.
 VALIDATE_SMOKE_MIN_S = 15
 VALIDATE_SMOKE_S_PER_FILE = 0.15
+# Techo: sin él el tope crece sin límite (0,15 s × 10.000 archivos = 25 min) y el
+# smoke deja de detectar el cuelgue que existe para detectar: solo espera. 180 s
+# es ~21× el costo medido del vault más grande (748 archivos, 8,4 s reales).
+VALIDATE_SMOKE_MAX_S = 180
 
 
 def _validate_smoke_timeout(vault, config=None):
-    """Tope del smoke de `validate --all`: 0,15 s por archivo, nunca menos de 15 s."""
+    """Tope del smoke de `validate --all`: 0,15 s por archivo, entre 15 y 180 s."""
     try:
         n = len(find_md_files(Path(vault), config=config))
     except Exception:
         n = 0
-    return max(VALIDATE_SMOKE_MIN_S, int(n * VALIDATE_SMOKE_S_PER_FILE + 0.999))
+    return max(VALIDATE_SMOKE_MIN_S,
+               min(VALIDATE_SMOKE_MAX_S, int(n * VALIDATE_SMOKE_S_PER_FILE + 0.999)))
 
 
 def _check_scripts(vault, smoke_entry_point="tp3-cibernetico", config=None):

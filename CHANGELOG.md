@@ -5,6 +5,30 @@ Todas las modificaciones notables al servidor MCP OKF. Formato basado en [Keep a
 ---
 ## [Unreleased]
 
+---
+## [2026-11-03] — v0.4.34
+
+El smoke de `validate --all` era el único cuyo costo crece con el vault, con un tope fijo de 15 s: en un vault de 326 archivos bajo carga tardaba 19,7–24,2 s, `health` daba 🔴 7/8 y el pre-commit (`health --strict`) **rechazaba todo commit sobre un vault sano**. Dos correcciones, del autor del PR y mía.
+
+### El tope del smoke escala con el vault (#51, Medardo)
+
+- **`_validate_smoke_timeout()`** (`cli/commands/health.py`): 0,15 s por archivo con piso de 15 s, contando con el mismo `find_md_files(vault, config)` que usa `validate --all`. Vaults chicos no cambian.
+- Medido en el host del autor: 326 archivos → 19,7 / 21,5 / 24,2 s contra el tope de 15 s. En Linux no se reproduce (skynet-vault 312 archivos: 4,10 s; OKF-Vault 748: 8,44 s), así que el fix no cambia nada acá y desbloquea allá.
+
+### Techo del tope (follow-up sobre master)
+
+- **`VALIDATE_SMOKE_MAX_S = 180`**: sin techo, 0,15 s × 10.000 archivos da un smoke de 25 minutos. El smoke existe para detectar que `validate --all` se cuelgue; a esa escala solo espera. 180 s es ~21× el costo medido del vault más grande.
+- Test: `test_vault_enorme_no_pasa_del_techo` (vault sintético de 2.000 archivos → tope 180 y no 300).
+
+### Dónde está realmente el costo de `validate --all`
+
+Perfilado sobre OKF-Vault (748 archivos, 17,7 s con `cProfile`): **3.590 `yaml.safe_load` en 12,24 s** — 4,8 parses por archivo, porque cada arista re-parsea el frontmatter de su destino. `git show` por archivo ni aparece en el top 12. Un caché por texto idéntico en `validate --all` baja el tiempo real de 8,44 s a 6,45 s (−24 %) con 1.348 hits de 2.095 parses: esa es la palanca de fondo, pendiente.
+
+Suite: **637**.
+
+---
+## [2026-11-03] — v0.4.33
+
 ### Licencia MIT declarada de verdad (`LICENSE`)
 
 El repo decía MIT en dos lugares y no lo probaba en ninguno: `pyproject.toml` tenía `license = { text = "MIT" }` y el README decía «MIT», pero **no había archivo `LICENSE`**, así que GitHub devolvía `licenseInfo: null` sobre `syberloop/mcp-okf` — quien clonaba o forkeaba no tenía términos, y una sección «The license» en la landing apuntando a ese repo no tenía licencia que mostrar.
